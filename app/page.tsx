@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { Building2, User, ShieldCheck, ArrowRight, Lock, Globe, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Layout from '@/components/layout/Layout';
 
-const LandingPage = () => {
+export default function Home() {
   const portals = [
     {
       icon: Building2,
@@ -66,13 +66,13 @@ const LandingPage = () => {
               to issue tamper-proof credentials, and enables instant verification by employers worldwide.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-              <Link to="/institution">
+              <Link href="/institution">
                 <Button size="lg" className="w-full sm:w-auto">
                   Get Started
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link to="/verify">
+              <Link href="/verify">
                 <Button size="lg" variant="outline" className="w-full sm:w-auto">
                   Verify a Certificate
                 </Button>
@@ -88,13 +88,13 @@ const LandingPage = () => {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">Choose Your Portal</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Whether you're an institution, certificate holder, or employer, 
+              Whether you&apos;re an institution, certificate holder, or employer, 
               LiteCert has you covered.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
             {portals.map((portal) => (
-              <Link key={portal.href} to={portal.href} className="group">
+              <Link key={portal.href} href={portal.href} className="group">
                 <Card className="h-full transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-2 hover:border-primary/20">
                   <CardHeader>
                     <div className={`w-12 h-12 rounded-lg ${portal.color} flex items-center justify-center mb-4`}>
@@ -119,7 +119,7 @@ const LandingPage = () => {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">Why LiteCert?</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Built on Cardano's proven blockchain technology for maximum security and reliability.
+              Built on Cardano&apos;s proven blockchain technology for maximum security and reliability.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
@@ -143,7 +143,7 @@ const LandingPage = () => {
           <p className="mb-8 opacity-90 max-w-lg mx-auto">
             Join institutions worldwide in securing credentials with blockchain technology.
           </p>
-          <Link to="/institution/register">
+          <Link href="/institution/register">
             <Button size="lg" variant="secondary">
               Register Your Institution
             </Button>
@@ -152,6 +152,4 @@ const LandingPage = () => {
       </section>
     </Layout>
   );
-};
-
-export default LandingPage;
+}

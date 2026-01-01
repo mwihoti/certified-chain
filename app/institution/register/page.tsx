@@ -1,5 +1,8 @@
+"use client";
+
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Building2, Mail, ArrowRight, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
 
-const InstitutionRegister = () => {
-  const navigate = useNavigate();
+export default function InstitutionRegister() {
+  const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
@@ -34,7 +37,7 @@ const InstitutionRegister = () => {
     });
 
     setIsSubmitting(false);
-    navigate('/institution/login');
+    router.push('/institution/login');
   };
 
   return (
@@ -139,7 +142,7 @@ const InstitutionRegister = () => {
 
               <div className="mt-6 text-center text-sm text-muted-foreground">
                 Already registered?{' '}
-                <Link to="/institution/login" className="text-primary hover:underline">
+                <Link href="/institution/login" className="text-primary hover:underline">
                   Sign in here
                 </Link>
               </div>
@@ -166,5 +169,3 @@ const InstitutionRegister = () => {
     </Layout>
   );
 };
-
-export default InstitutionRegister;

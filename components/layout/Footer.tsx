@@ -1,5 +1,5 @@
 import { Shield } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 
 const Footer = () => {
   return (
@@ -8,7 +8,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="md:col-span-2">
-            <Link to="/" className="flex items-center gap-2 font-semibold text-lg mb-4">
+            <Link href="/" className="flex items-center gap-2 font-semibold text-lg mb-4">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Shield className="h-4 w-4 text-primary-foreground" />
               </div>
@@ -25,17 +25,17 @@ const Footer = () => {
             <h4 className="font-semibold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <Link to="/institution" className="hover:text-foreground transition-colors">
+                <Link href="/institution" className="hover:text-foreground transition-colors">
                   Institution Portal
                 </Link>
               </li>
               <li>
-                <Link to="/user" className="hover:text-foreground transition-colors">
+                <Link href="/user" className="hover:text-foreground transition-colors">
                   Retrieve Certificate
                 </Link>
               </li>
               <li>
-                <Link to="/verify" className="hover:text-foreground transition-colors">
+                <Link href="/verify" className="hover:text-foreground transition-colors">
                   Verify Certificate
                 </Link>
               </li>

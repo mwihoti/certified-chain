@@ -1,5 +1,7 @@
+"use client";
+
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import {
   FileText,
   Upload,
@@ -34,7 +36,7 @@ import {
 import Layout from '@/components/layout/Layout';
 import { mockCertificates, mockInstitutions } from '@/lib/mockData';
 
-const InstitutionDashboard = () => {
+export default function InstitutionDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   
   // Use first institution as the "logged in" institution
@@ -81,13 +83,13 @@ const InstitutionDashboard = () => {
             <p className="text-muted-foreground">Certificate Management Dashboard</p>
           </div>
           <div className="flex gap-3">
-            <Link to="/institution/issue">
+            <Link href="/institution/issue">
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
                 Issue Certificate
               </Button>
             </Link>
-            <Link to="/institution/batch">
+            <Link href="/institution/batch">
               <Button variant="outline">
                 <Upload className="mr-2 h-4 w-4" />
                 Batch Upload
@@ -234,5 +236,3 @@ const InstitutionDashboard = () => {
     </Layout>
   );
 };
-
-export default InstitutionDashboard;

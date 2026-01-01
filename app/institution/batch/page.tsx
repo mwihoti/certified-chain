@@ -1,5 +1,7 @@
+"use client";
+
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,8 +27,8 @@ interface BatchEntry {
   status: 'pending' | 'processing' | 'complete' | 'error';
 }
 
-const BatchUpload = () => {
-  const navigate = useNavigate();
+export default function BatchUpload() {
+  const router = useRouter();
   const { toast } = useToast();
   const [step, setStep] = useState<'upload' | 'preview' | 'processing' | 'complete'>('upload');
   const [isDragging, setIsDragging] = useState(false);
@@ -116,7 +118,7 @@ const BatchUpload = () => {
       <div className="container py-8 max-w-4xl">
         <Button
           variant="ghost"
-          onClick={() => navigate('/institution/dashboard')}
+          onClick={() => router.push('/institution/dashboard')}
           className="mb-6"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -293,7 +295,7 @@ const BatchUpload = () => {
                   }}>
                     Upload Another Batch
                   </Button>
-                  <Button variant="outline" onClick={() => navigate('/institution/dashboard')}>
+                  <Button variant="outline" onClick={() => router.push('/institution/dashboard')}>
                     Back to Dashboard
                   </Button>
                 </div>
@@ -305,5 +307,3 @@ const BatchUpload = () => {
     </Layout>
   );
 };
-
-export default BatchUpload;

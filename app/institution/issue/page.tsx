@@ -1,5 +1,7 @@
+"use client";
+
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Send, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,8 +12,8 @@ import { Progress } from '@/components/ui/progress';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
 
-const IssueCertificate = () => {
-  const navigate = useNavigate();
+export default function IssueCertificate() {
+  const router = useRouter();
   const { toast } = useToast();
   const [step, setStep] = useState<'form' | 'processing' | 'complete'>('form');
   const [progress, setProgress] = useState(0);
@@ -68,7 +70,7 @@ const IssueCertificate = () => {
       <div className="container py-8 max-w-2xl">
         <Button
           variant="ghost"
-          onClick={() => navigate('/institution/dashboard')}
+          onClick={() => router.push('/institution/dashboard')}
           className="mb-6"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -230,7 +232,7 @@ const IssueCertificate = () => {
                   }}>
                     Issue Another
                   </Button>
-                  <Button variant="outline" onClick={() => navigate('/institution/dashboard')}>
+                  <Button variant="outline" onClick={() => router.push('/institution/dashboard')}>
                     Back to Dashboard
                   </Button>
                 </div>
@@ -242,5 +244,3 @@ const IssueCertificate = () => {
     </Layout>
   );
 };
-
-export default IssueCertificate;

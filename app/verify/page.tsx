@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from 'react';
 import { ShieldCheck, ShieldX, ShieldAlert, Search, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Layout from '@/components/layout/Layout';
 import { findCertificateByNumber, Certificate } from '@/lib/mockData';
 
-const VerifyPortal = () => {
+export default function VerifyPortal() {
   const [certNumber, setCertNumber] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<{ status: 'valid' | 'invalid' | 'revoked'; certificate?: Certificate } | null>(null);
@@ -120,5 +122,3 @@ const VerifyPortal = () => {
     </Layout>
   );
 };
-
-export default VerifyPortal;

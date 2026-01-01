@@ -1,5 +1,8 @@
+"use client";
+
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Building2, ArrowRight, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,8 +12,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
 
-const InstitutionLogin = () => {
-  const navigate = useNavigate();
+export default function InstitutionLogin() {
+  const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,7 +34,7 @@ const InstitutionLogin = () => {
     });
 
     setIsLoading(false);
-    navigate('/institution/dashboard');
+    router.push('/institution/dashboard');
   };
 
   const handleDemoLogin = async () => {
@@ -44,7 +47,7 @@ const InstitutionLogin = () => {
     });
     
     setIsLoading(false);
-    navigate('/institution/dashboard');
+    router.push('/institution/dashboard');
   };
 
   return (
@@ -128,7 +131,7 @@ const InstitutionLogin = () => {
 
               <div className="mt-6 text-center text-sm text-muted-foreground">
                 Don't have an account?{' '}
-                <Link to="/institution/register" className="text-primary hover:underline">
+                <Link href="/institution/register" className="text-primary hover:underline">
                   Register here
                 </Link>
               </div>
@@ -139,5 +142,3 @@ const InstitutionLogin = () => {
     </Layout>
   );
 };
-
-export default InstitutionLogin;

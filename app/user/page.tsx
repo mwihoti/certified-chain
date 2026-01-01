@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from 'react';
 import { Search, Download, Share2, CheckCircle, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +11,7 @@ import Layout from '@/components/layout/Layout';
 import { findCertificate, generateVerificationCode, Certificate } from '@/lib/mockData';
 import { useToast } from '@/hooks/use-toast';
 
-const UserPortal = () => {
+export default function UserPortal() {
   const { toast } = useToast();
   const [certNumber, setCertNumber] = useState('');
   const [position, setPosition] = useState('');
@@ -109,5 +111,3 @@ const UserPortal = () => {
     </Layout>
   );
 };
-
-export default UserPortal;
