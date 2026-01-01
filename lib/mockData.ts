@@ -35,7 +35,7 @@ export const mockInstitutions: Institution[] = [
     type: 'university',
     email: 'registrar@cardanostate.edu',
     verified: true,
-    registeredAt: '2026-01-01',
+    registeredAt: '2025-12-15',
     certificatesIssued: 1247,
   },
   {
@@ -176,7 +176,7 @@ export const mockCertificates: Certificate[] = [
     credentialType: 'Medical License - General Surgery',
     issueDate: '2025-09-10',
     status: 'revoked',
-    revokedAt: '2025-12-15',
+    revokedAt: '2025-12-20',
     revokedReason: 'License suspended pending investigation',
     blockchainTxHash: '0x3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567891',
     ipfsCid: 'QmAoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco',
