@@ -67,7 +67,7 @@ export default function BatchUpload() {
     });
   }, [toast]);
 
-  export default function handleFileSelect() {
+  const handleFileSelect = () => {
     // Simulate file selection with mock data
     setEntries(mockCSVData);
     setStep('preview');

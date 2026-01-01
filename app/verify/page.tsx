@@ -30,7 +30,7 @@ export default function VerifyPortal() {
     setIsVerifying(false);
   };
 
-  export default function ResultDisplay() {
+  const ResultDisplay = () => {
     if (!result) return null;
 
     const configs = {

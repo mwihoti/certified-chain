@@ -25,11 +25,9 @@ A frontend prototype for a blockchain-based certificate verification platform bu
 
 ## Tech Stack
 
-- **Framework**: React 18 with TypeScript
-- **Build Tool**: Vite
+- **Framework**: Next.js 16 with React 18 and TypeScript
 - **Styling**: Tailwind CSS
 - **UI Components**: shadcn/ui (Radix UI)
-- **Routing**: React Router v6
 - **State Management**: React Query (TanStack Query)
 - **Icons**: Lucide React
 
@@ -68,27 +66,32 @@ bun dev
 
 4. Open your browser and navigate to:
 ```
-http://localhost:5173
+http://localhost:3000
 ```
 
 ## Project Structure
 
 ```
-src/
-├── components/
-│   ├── layout/          # Header, Footer, Layout components
-│   └── ui/              # Reusable UI components (shadcn/ui)
-├── hooks/               # Custom React hooks
-├── lib/
-│   ├── mockData.ts      # Mock data for prototype
-│   └── utils.ts         # Utility functions
-├── pages/
-│   ├── institution/     # Institution portal pages
-│   ├── user/            # User portal pages
-│   └── verify/          # Verification portal pages
-├── App.tsx              # Main app with routing
-├── index.css            # Global styles and design tokens
-└── main.tsx             # App entry point
+app/
+├── institution/         # Institution portal pages
+│   ├── batch/          # Batch upload page
+│   ├── dashboard/      # Dashboard page
+│   ├── issue/          # Issue certificate page
+│   ├── register/       # Registration page
+│   └── page.tsx        # Login page
+├── user/               # User portal pages
+├── verify/             # Verification portal pages
+├── layout.tsx          # Root layout with providers
+├── page.tsx            # Home page
+├── providers.tsx       # Client-side providers
+└── globals.css         # Global styles and design tokens
+components/
+├── layout/             # Header, Footer, Layout components
+└── ui/                 # Reusable UI components (shadcn/ui)
+hooks/                  # Custom React hooks
+lib/
+├── mockData.ts         # Mock data for prototype
+└── utils.ts            # Utility functions
 ```
 
 ## Demo Credentials
@@ -111,7 +114,7 @@ src/
 
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
-- `npm run preview` - Preview production build
+- `npm start` - Start production server
 - `npm run lint` - Run ESLint
 
 ## Future Integration Points

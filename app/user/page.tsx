@@ -36,7 +36,7 @@ export default function UserPortal() {
     setIsSearching(false);
   };
 
-  export default function handleShare() {
+  const handleShare = () => {
     const code = generateVerificationCode(certificate!.certificateNumber);
     navigator.clipboard.writeText(`${window.location.origin}/verify?code=${code}`);
     toast({ title: 'Link Copied', description: 'Verification link copied to clipboard.' });
