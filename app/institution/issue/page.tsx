@@ -11,6 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Progress } from '@/components/ui/progress';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
+import {
+  generateUniqueIdentifier,
+  submitCertificateToBlockchain,
+  getNextEntryNumber,
+  CertificateData,
+} from '@/lib/services/cardano';
 
 export default function IssueCertificate() {
   const router = useRouter();
@@ -18,6 +24,7 @@ export default function IssueCertificate() {
   const [step, setStep] = useState<'form' | 'processing' | 'complete'>('form');
   const [progress, setProgress] = useState(0);
   const [txHash, setTxHash] = useState('');
+  const [uniqueIdentifier, setUniqueIdentifier] = useState('');
 
   const [formData, setFormData] = useState({
     recipientName: '',
@@ -42,27 +49,71 @@ export default function IssueCertificate() {
     e.preventDefault();
     setStep('processing');
 
-    // Simulate blockchain processing steps
-    const steps = [
-      { progress: 20, delay: 800 },
-      { progress: 45, delay: 1000 },
-      { progress: 70, delay: 1200 },
-      { progress: 90, delay: 800 },
-      { progress: 100, delay: 500 },
-    ];
+    try {
+      // Step 1: Generate unique identifier (20%)
+      setProgress(20);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      
+      // Mock institution data - in production, get from auth session
+      const institutionName = 'Cardano State University';
+      const institutionId = 'inst-001';
+      
+      const entryNumber = getNextEntryNumber(institutionId, formData.recipientName);
+      const identifier = generateUniqueIdentifier(
+        institutionName,
+        formData.recipientName,
+        entryNumber
+      );
+      
+      setUniqueIdentifier(identifier.fullIdentifier);
 
-    for (const s of steps) {
-      await new Promise((resolve) => setTimeout(resolve, s.delay));
-      setProgress(s.progress);
+      // Step 2: Hash certificate data (45%)
+      setProgress(45);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Step 3: Submit to blockchain (70%)
+      setProgress(70);
+      
+      const certificateData: CertificateData = {
+        recipientName: formData.recipientName,
+        recipientEmail: formData.recipientEmail,
+        recipientPosition: formData.recipientPosition,
+        credentialType: formData.credentialType,
+        issueDate: formData.issueDate,
+        expiryDate: formData.expiryDate,
+        institutionId,
+        institutionName,
+      };
+
+      const result = await submitCertificateToBlockchain(
+        certificateData,
+        identifier.fullIdentifier
+      );
+
+      // Step 4: Finalize (100%)
+      setProgress(90);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      
+      setTxHash(result.txHash);
+      setProgress(100);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      
+      setStep('complete');
+      
+      toast({
+        title: 'Certificate Issued Successfully',
+        description: `Certificate ${identifier.fullIdentifier} has been anchored on Cardano blockchain.`,
+      });
+    } catch (error) {
+      console.error('Error issuing certificate:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to issue certificate. Please try again.',
+        variant: 'destructive',
+      });
+      setStep('form');
+      setProgress(0);
     }
-
-    // Generate mock transaction hash
-    const mockTx = `0x${Array.from({ length: 64 }, () => 
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('')}`;
-    
-    setTxHash(mockTx);
-    setStep('complete');
   };
 
   return (
@@ -186,9 +237,9 @@ export default function IssueCertificate() {
                 <div>
                   <h3 className="text-xl font-semibold mb-2">Processing Certificate</h3>
                   <p className="text-muted-foreground">
-                    {progress < 30 && 'Encrypting certificate data...'}
-                    {progress >= 30 && progress < 60 && 'Uploading to IPFS...'}
-                    {progress >= 60 && progress < 90 && 'Anchoring metadata on Cardano...'}
+                    {progress < 30 && 'Generating unique identifier...'}
+                    {progress >= 30 && progress < 60 && 'Hashing certificate data...'}
+                    {progress >= 60 && progress < 90 && 'Submitting to Cardano blockchain...'}
                     {progress >= 90 && 'Finalizing transaction...'}
                   </p>
                 </div>
@@ -212,15 +263,22 @@ export default function IssueCertificate() {
                   </p>
                 </div>
 
-                <div className="bg-muted rounded-lg p-4 text-left max-w-lg mx-auto">
-                  <p className="text-sm text-muted-foreground mb-1">Transaction Hash</p>
-                  <p className="font-mono text-xs break-all">{txHash}</p>
+                <div className="bg-muted rounded-lg p-4 text-left max-w-lg mx-auto space-y-3">
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Unique Certificate Identifier</p>
+                    <p className="font-mono text-sm font-semibold">{uniqueIdentifier}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Transaction Hash</p>
+                    <p className="font-mono text-xs break-all">{txHash}</p>
+                  </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
                   <Button onClick={() => {
                     setStep('form');
                     setProgress(0);
+                    setUniqueIdentifier('');
                     setFormData({
                       recipientName: '',
                       recipientEmail: '',
