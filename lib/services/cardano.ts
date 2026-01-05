@@ -166,10 +166,11 @@ export async function submitCertificateToBlockchain(
     // Simulate transaction submission delay
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Generate a mock transaction hash (in production, this comes from the actual blockchain)
-    const mockTxHash = `0x${Array.from({ length: 64 }, () =>
+    // Generate a mock transaction hash (Cardano format - 64 characters hex without 0x prefix)
+    // In production, this comes from the actual blockchain
+    const mockTxHash = Array.from({ length: 64 }, () =>
       Math.floor(Math.random() * 16).toString(16)
-    ).join('')}`;
+    ).join('');
 
     return {
       txHash: mockTxHash,
@@ -206,14 +207,17 @@ export async function verifyCertificateOnChain(
 }
 
 // Get next entry number for an organization (in production, query from database)
+// For now, use a timestamp-based approach to minimize collisions
+let entryCounter = 1;
+
 export function getNextEntryNumber(
   organizationId: string,
   userName: string
 ): number {
   // In production, this would query the database for the highest entry number
   // for this organization and user combination, then increment
-  // For now, generate a random number between 1-99
-  return Math.floor(Math.random() * 99) + 1;
+  // For demo purposes, use an incrementing counter to avoid duplicates
+  return entryCounter++;
 }
 
 // Batch submit certificates to blockchain

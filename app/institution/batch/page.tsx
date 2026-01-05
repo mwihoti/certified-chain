@@ -144,6 +144,14 @@ export default function BatchUpload() {
           )
         );
         
+        // Generate unique identifier once for this certificate
+        const entryNumber = getNextEntryNumber(institutionId, entry.recipientName);
+        const identifier = generateUniqueIdentifier(
+          institutionName,
+          entry.recipientName,
+          entryNumber
+        );
+        
         // Create certificate data
         const certificateData: CertificateData = {
           recipientName: entry.recipientName,
@@ -156,14 +164,10 @@ export default function BatchUpload() {
           institutionName,
         };
         
-        // Submit to blockchain
+        // Submit to blockchain with the generated identifier
         const result = await submitCertificateToBlockchain(
           certificateData,
-          generateUniqueIdentifier(
-            institutionName,
-            entry.recipientName,
-            getNextEntryNumber(institutionId, entry.recipientName)
-          ).fullIdentifier
+          identifier.fullIdentifier
         );
         
         results.push(result);

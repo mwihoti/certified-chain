@@ -65,7 +65,7 @@ export default function UserPortal() {
       credentialType: 'Bachelor of Science in Computer Science',
       issueDate: '2024-01-15',
       status: 'valid',
-      blockchainTxHash: '0x8f3a2b1c4d5e6f7890abcdef1234567890abcdef1234567890abcdef12345678',
+      blockchainTxHash: '8f3a2b1c4d5e6f7890abcdef1234567890abcdef1234567890abcdef12345678',
       ipfsCid: 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco',
       metadataHash: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     };
