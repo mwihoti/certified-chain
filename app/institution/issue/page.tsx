@@ -15,8 +15,10 @@ import {
   generateUniqueIdentifier,
   submitCertificateToBlockchain,
   getNextEntryNumber,
+  hashCertificateData,
   CertificateData,
 } from '@/lib/services/cardano';
+import { saveCertificate } from '@/lib/services/api';
 
 export default function IssueCertificate() {
   const router = useRouter();
@@ -90,9 +92,32 @@ export default function IssueCertificate() {
         identifier.fullIdentifier
       );
 
-      // Step 4: Finalize (100%)
+      // Step 4: Save to backend API (90%)
       setProgress(90);
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      
+      // Generate certificate number (in production, this would come from backend)
+      const certificateNumber = `${institutionName.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${String(entryNumber).padStart(5, '0')}`;
+      
+      // Save certificate to backend
+      const saveResult = await saveCertificate({
+        uniqueIdentifier: identifier.fullIdentifier,
+        certificateNumber,
+        recipientName: formData.recipientName,
+        recipientEmail: formData.recipientEmail,
+        recipientPosition: formData.recipientPosition,
+        credentialType: formData.credentialType,
+        issueDate: formData.issueDate,
+        expiryDate: formData.expiryDate,
+        institutionId,
+        institutionName,
+        blockchainTxHash: result.txHash,
+        certificateHash: result.certificateHash,
+      });
+      
+      if (!saveResult.success) {
+        console.warn('Failed to save certificate to backend:', saveResult.error);
+        // Continue anyway - blockchain submission succeeded
+      }
       
       setTxHash(result.txHash);
       setProgress(100);

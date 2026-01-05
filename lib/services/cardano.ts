@@ -103,21 +103,30 @@ export function createCertificateMetadata(
   };
 }
 
-// Connect to Eternl wallet
-// Note: This is a placeholder for actual wallet integration
-// In production, implement using @meshsdk/core in a client-side only context
-export async function connectWallet(): Promise<any | null> {
-  try {
-    // Check if wallet is available
-    if (typeof window === 'undefined') {
-      console.error('Window object not available');
-      return null;
-    }
+// Get Cardano network configuration
+export function getCardanoNetwork(): 'preview' | 'preprod' | 'mainnet' {
+  const network = process.env.NEXT_PUBLIC_CARDANO_NETWORK || 'preview';
+  if (network !== 'preview' && network !== 'preprod' && network !== 'mainnet') {
+    console.warn(`Invalid network ${network}, defaulting to preview`);
+    return 'preview';
+  }
+  return network as 'preview' | 'preprod' | 'mainnet';
+}
 
-    // TODO: Implement actual wallet connection using @meshsdk/core
-    // For now, this is a placeholder that simulates wallet connection
-    console.log('Wallet connection would be initiated here');
-    
+// Note: For actual wallet connections, use the wallet-client.ts module directly in client components
+// The functions below are kept for backwards compatibility but will use wallet-client internally
+
+// Connect to Eternl wallet (client-side only)
+// For actual use, import from wallet-client.ts directly
+export async function connectWallet(): Promise<any | null> {
+  if (typeof window === 'undefined') {
+    console.warn('connectWallet called in server context');
+    return null;
+  }
+
+  try {
+    // In production, use wallet-client.ts directly in your client components
+    console.log('Wallet connection should be handled in client components using wallet-client.ts');
     return null;
   } catch (error) {
     console.error('Error connecting to wallet:', error);
@@ -125,25 +134,58 @@ export async function connectWallet(): Promise<any | null> {
   }
 }
 
-// Get wallet address
+// Get wallet address (client-side only)
 export async function getWalletAddress(wallet: any): Promise<string | null> {
-  try {
-    // TODO: Implement actual wallet address retrieval
-    // const addresses = await wallet.getUsedAddresses();
-    // return addresses[0] || null;
-    
+  if (typeof window === 'undefined') {
     return null;
+  }
+
+  try {
+    if (!wallet) {
+      console.error('No wallet provided');
+      return null;
+    }
+    
+    const addresses = await wallet.getUsedAddresses();
+    if (!addresses || addresses.length === 0) {
+      console.error('No addresses found in wallet');
+      return null;
+    }
+    
+    return addresses[0];
   } catch (error) {
     console.error('Error getting wallet address:', error);
     return null;
   }
 }
 
-// Submit certificate to blockchain (mock implementation)
-// In production, this would use the actual Mesh SDK to create and submit transactions
+// Get wallet balance (client-side only)
+export async function getWalletBalance(wallet: any): Promise<string | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    if (!wallet) {
+      console.error('No wallet provided');
+      return null;
+    }
+    
+    const balance = await wallet.getBalance();
+    return balance;
+  } catch (error) {
+    console.error('Error getting wallet balance:', error);
+    return null;
+  }
+}
+
+// Submit certificate to blockchain
+// Note: Actual blockchain submission requires client-side wallet connection
+// Use wallet-client.ts for wallet functionality
 export async function submitCertificateToBlockchain(
   certificateData: CertificateData,
-  uniqueIdentifier: string
+  uniqueIdentifier: string,
+  wallet?: any
 ): Promise<BlockchainResult> {
   // Hash the certificate data
   const certificateHash = hashCertificateData(certificateData);
@@ -156,32 +198,61 @@ export async function submitCertificateToBlockchain(
   );
 
   try {
-    // For now, we'll simulate the blockchain submission
-    // In production, you would:
-    // 1. Connect to the LiteCert wallet
-    // 2. Build a transaction with the metadata
-    // 3. Submit the transaction to Cardano
-    // 4. Wait for confirmation
+    // If wallet is provided and we're in browser, attempt actual blockchain submission
+    if (wallet && typeof window !== 'undefined') {
+      try {
+        // Check if Blockfrost is configured
+        const network = getCardanoNetwork();
+        const blockfrostKey = process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID;
+        
+        if (!blockfrostKey || blockfrostKey.includes('your_')) {
+          console.warn('Blockfrost API key not configured, using mock submission');
+          return mockBlockchainSubmission(uniqueIdentifier, certificateHash);
+        }
+        
+        // TODO: Implement actual blockchain transaction here
+        // This requires MeshJS which must be imported dynamically in a client component
+        // For now, we use mock submission
+        console.log('Wallet provided, would submit to blockchain with:', {
+          network,
+          metadata,
+          uniqueIdentifier,
+        });
+        
+        return mockBlockchainSubmission(uniqueIdentifier, certificateHash);
+      } catch (error) {
+        console.error('Error submitting to blockchain, falling back to mock:', error);
+        return mockBlockchainSubmission(uniqueIdentifier, certificateHash);
+      }
+    }
     
-    // Simulate transaction submission delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Generate a mock transaction hash (Cardano format - 64 characters hex without 0x prefix)
-    // In production, this comes from the actual blockchain
-    const mockTxHash = Array.from({ length: 64 }, () =>
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('');
-
-    return {
-      txHash: mockTxHash,
-      uniqueIdentifier,
-      certificateHash,
-      timestamp: Date.now(),
-    };
+    // Fallback to mock submission
+    return mockBlockchainSubmission(uniqueIdentifier, certificateHash);
   } catch (error) {
-    console.error('Error submitting to blockchain:', error);
+    console.error('Error in certificate submission:', error);
     throw new Error('Failed to submit certificate to blockchain');
   }
+}
+
+// Mock blockchain submission for development/testing
+async function mockBlockchainSubmission(
+  uniqueIdentifier: string,
+  certificateHash: string
+): Promise<BlockchainResult> {
+  // Simulate transaction submission delay
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Generate a mock transaction hash (Cardano format - 64 characters hex without 0x prefix)
+  const mockTxHash = Array.from({ length: 64 }, () =>
+    Math.floor(Math.random() * 16).toString(16)
+  ).join('');
+
+  return {
+    txHash: mockTxHash,
+    uniqueIdentifier,
+    certificateHash,
+    timestamp: Date.now(),
+  };
 }
 
 // Verify certificate on blockchain (mock implementation)
