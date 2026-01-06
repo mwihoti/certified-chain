@@ -7,10 +7,12 @@ import { ArrowLeft, Download, ExternalLink } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import CertificateTemplate from '@/components/certificate/CertificateTemplate';
 import { mockCertificates } from '@/lib/mockData';
+import { useToast } from '@/hooks/use-toast';
 
 function CertificateContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { toast } = useToast();
   const [certificate, setCertificate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +34,10 @@ function CertificateContent() {
 
   const handleDownload = () => {
     // In a real implementation, this would generate a PDF
-    alert('PDF download would be triggered here. This requires a PDF generation library.');
+    toast({
+      title: 'PDF Generation',
+      description: 'PDF download feature will be implemented with a PDF generation library in production.',
+    });
   };
 
   if (loading) {

@@ -41,6 +41,7 @@ import {
   downloadExcelFile,
   ExcelCertificateRow,
 } from '@/lib/services/excel';
+import { getFromLocalStorage, setToLocalStorage } from '@/lib/localStorage';
 
 interface PendingOrganization {
   id: string;
@@ -83,11 +84,8 @@ export default function AdminIssueCerts() {
 
   useEffect(() => {
     // Load pending organizations from localStorage
-    const stored = localStorage.getItem('pendingOrganizations');
-    if (stored) {
-      const orgs = JSON.parse(stored);
-      setPendingOrgs(orgs.filter((org: PendingOrganization) => org.status === 'pending'));
-    }
+    const orgs = getFromLocalStorage('pendingOrganizations', []);
+    setPendingOrgs(orgs.filter((org: PendingOrganization) => org.status === 'pending'));
   }, []);
 
   const handleConnectWallet = async () => {
@@ -214,16 +212,13 @@ export default function AdminIssueCerts() {
       }
       
       // Update organization status
-      const stored = localStorage.getItem('pendingOrganizations');
-      if (stored) {
-        const orgs = JSON.parse(stored);
-        const updated = orgs.map((org: PendingOrganization) =>
-          org.id === selectedOrg.id
-            ? { ...org, status: 'completed', completedAt: new Date().toISOString() }
-            : org
-        );
-        localStorage.setItem('pendingOrganizations', JSON.stringify(updated));
-      }
+      const orgs = getFromLocalStorage('pendingOrganizations', []);
+      const updated = orgs.map((org: PendingOrganization) =>
+        org.id === selectedOrg.id
+          ? { ...org, status: 'completed', completedAt: new Date().toISOString() }
+          : org
+      );
+      setToLocalStorage('pendingOrganizations', updated);
       
       setStep('complete');
       toast({
@@ -622,11 +617,8 @@ export default function AdminIssueCerts() {
                     setProgress(0);
                     setProcessedCount(0);
                     // Reload pending orgs
-                    const stored = localStorage.getItem('pendingOrganizations');
-                    if (stored) {
-                      const orgs = JSON.parse(stored);
-                      setPendingOrgs(orgs.filter((org: PendingOrganization) => org.status === 'pending'));
-                    }
+                    const orgs = getFromLocalStorage('pendingOrganizations', []);
+                    setPendingOrgs(orgs.filter((org: PendingOrganization) => org.status === 'pending'));
                   }}>
                     Process Another Organization
                   </Button>

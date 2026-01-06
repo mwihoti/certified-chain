@@ -38,6 +38,9 @@ export default function CertificateTemplate({
             src={organizationLogo} 
             alt={`${institutionName} logo`}
             className="w-full h-full object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
           />
         </div>
       )}

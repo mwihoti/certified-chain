@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
+import { getFromLocalStorage, setToLocalStorage } from '@/lib/localStorage';
 
 export default function InstitutionRegister() {
   const router = useRouter();
@@ -113,9 +114,9 @@ export default function InstitutionRegister() {
     };
 
     // Save to localStorage for demo purposes
-    const pendingOrgs = JSON.parse(localStorage.getItem('pendingOrganizations') || '[]');
+    const pendingOrgs = getFromLocalStorage('pendingOrganizations', []);
     pendingOrgs.push(registrationData);
-    localStorage.setItem('pendingOrganizations', JSON.stringify(pendingOrgs));
+    setToLocalStorage('pendingOrganizations', pendingOrgs);
 
     toast({
       title: 'Registration Submitted',
