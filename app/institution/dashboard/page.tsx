@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   FileText,
   Upload,
@@ -38,6 +39,7 @@ import Layout from '@/components/layout/Layout';
 import { mockCertificates, mockInstitutions } from '@/lib/mockData';
 
 export default function InstitutionDashboard() {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   
   // Use first institution as the "logged in" institution
@@ -223,7 +225,9 @@ export default function InstitutionDashboard() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/certificate/view?id=${cert.id}`)}
+                            >
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
