@@ -41,19 +41,14 @@ import {
   downloadExcelFile,
   ExcelCertificateRow,
 } from '@/lib/services/excel';
-import { getFromLocalStorage, setToLocalStorage } from '@/lib/localStorage';
+import { 
+  getOrganizations, 
+  updateOrganization, 
+  OrganizationData 
+} from '@/lib/services/api';
 
-interface PendingOrganization {
+interface PendingOrganization extends OrganizationData {
   id: string;
-  name: string;
-  type: string;
-  email: string;
-  contactName: string;
-  phone: string;
-  numberOfCerts: number;
-  organizationImageName: string;
-  certTemplateName: string;
-  recipientsExcelName: string;
   status: string;
   submittedAt: string;
 }
@@ -83,10 +78,27 @@ export default function AdminIssueCerts() {
   const [processedCount, setProcessedCount] = useState(0);
 
   useEffect(() => {
-    // Load pending organizations from localStorage
-    const orgs = getFromLocalStorage('pendingOrganizations', []);
-    setPendingOrgs(orgs.filter((org: PendingOrganization) => org.status === 'pending'));
+    // Load pending organizations from API
+    loadPendingOrganizations();
   }, []);
+
+  const loadPendingOrganizations = async () => {
+    try {
+      const response = await getOrganizations('pending');
+      if (response.success && response.data) {
+        setPendingOrgs(response.data as PendingOrganization[]);
+      } else {
+        console.error('Failed to load organizations:', response.error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load pending organizations.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading organizations:', error);
+    }
+  };
 
   const handleConnectWallet = async () => {
     setIsConnecting(true);
@@ -211,14 +223,11 @@ export default function AdminIssueCerts() {
         setProgress(((i + 1) / certificates.length) * 100);
       }
       
-      // Update organization status
-      const orgs = getFromLocalStorage('pendingOrganizations', []);
-      const updated = orgs.map((org: PendingOrganization) =>
-        org.id === selectedOrg.id
-          ? { ...org, status: 'completed', completedAt: new Date().toISOString() }
-          : org
-      );
-      setToLocalStorage('pendingOrganizations', updated);
+      // Update organization status via API
+      await updateOrganization(selectedOrg.id, { 
+        status: 'completed', 
+        completedAt: new Date().toISOString() 
+      });
       
       setStep('complete');
       toast({
@@ -616,9 +625,8 @@ export default function AdminIssueCerts() {
                     setCertificates([]);
                     setProgress(0);
                     setProcessedCount(0);
-                    // Reload pending orgs
-                    const orgs = getFromLocalStorage('pendingOrganizations', []);
-                    setPendingOrgs(orgs.filter((org: PendingOrganization) => org.status === 'pending'));
+                    // Reload pending orgs from API
+                    loadPendingOrganizations();
                   }}>
                     Process Another Organization
                   </Button>

@@ -156,3 +156,172 @@ export async function revokeCertificate(
     };
   }
 }
+
+// Organization API
+
+export interface OrganizationData {
+  id?: string;
+  name: string;
+  type: string;
+  email: string;
+  contactName: string;
+  phone: string;
+  numberOfCerts: number;
+  organizationImageName?: string;
+  certTemplateName?: string;
+  recipientsExcelName?: string;
+  status?: string;
+  submittedAt?: string;
+  completedAt?: string;
+}
+
+/**
+ * Fetch all organizations or filter by status
+ */
+export async function getOrganizations(status?: string): Promise<ApiResponse<OrganizationData[]>> {
+  try {
+    const url = status 
+      ? `${API_BASE_URL}/organizations?status=${encodeURIComponent(status)}`
+      : `${API_BASE_URL}/organizations`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Failed to fetch organizations',
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching organizations:', error);
+    return {
+      success: false,
+      error: 'Network error while fetching organizations',
+    };
+  }
+}
+
+/**
+ * Get a specific organization by ID
+ */
+export async function getOrganization(id: string): Promise<ApiResponse<OrganizationData>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/organizations?id=${encodeURIComponent(id)}`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Failed to fetch organization',
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching organization:', error);
+    return {
+      success: false,
+      error: 'Network error while fetching organization',
+    };
+  }
+}
+
+/**
+ * Create a new organization registration
+ */
+export async function createOrganization(
+  organization: OrganizationData
+): Promise<ApiResponse<OrganizationData>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/organizations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(organization),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Failed to create organization',
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error creating organization:', error);
+    return {
+      success: false,
+      error: 'Network error while creating organization',
+    };
+  }
+}
+
+/**
+ * Update an existing organization
+ */
+export async function updateOrganization(
+  id: string,
+  updates: Partial<OrganizationData>
+): Promise<ApiResponse<OrganizationData>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/organizations`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id, ...updates }),
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Failed to update organization',
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error updating organization:', error);
+    return {
+      success: false,
+      error: 'Network error while updating organization',
+    };
+  }
+}
+
+/**
+ * Delete an organization
+ */
+export async function deleteOrganization(id: string): Promise<ApiResponse<void>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/organizations?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || 'Failed to delete organization',
+      };
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error deleting organization:', error);
+    return {
+      success: false,
+      error: 'Network error while deleting organization',
+    };
+  }
+}

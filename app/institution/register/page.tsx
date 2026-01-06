@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
-import { getFromLocalStorage, setToLocalStorage } from '@/lib/localStorage';
+import { createOrganization, OrganizationData } from '@/lib/services/api';
 
 export default function InstitutionRegister() {
   const router = useRouter();
@@ -94,37 +94,43 @@ export default function InstitutionRegister() {
       return;
     }
 
-    // Simulate registration process and store data in localStorage for demo
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Prepare organization data
+      const organizationData: OrganizationData = {
+        name: formData.name,
+        type: formData.type,
+        email: formData.email,
+        contactName: formData.contactName,
+        phone: formData.phone,
+        numberOfCerts: parseInt(formData.numberOfCerts),
+        organizationImageName: formData.organizationImage.name,
+        certTemplateName: formData.certTemplate.name,
+        recipientsExcelName: formData.recipientsExcel.name,
+      };
 
-    // Store registration data for admin to process
-    const registrationData = {
-      id: `org-${Date.now()}`,
-      name: formData.name,
-      type: formData.type,
-      email: formData.email,
-      contactName: formData.contactName,
-      phone: formData.phone,
-      numberOfCerts: parseInt(formData.numberOfCerts),
-      organizationImageName: formData.organizationImage.name,
-      certTemplateName: formData.certTemplate.name,
-      recipientsExcelName: formData.recipientsExcel.name,
-      status: 'pending',
-      submittedAt: new Date().toISOString(),
-    };
+      // Save to backend API
+      const response = await createOrganization(organizationData);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to submit registration');
+      }
 
-    // Save to localStorage for demo purposes
-    const pendingOrgs = getFromLocalStorage('pendingOrganizations', []);
-    pendingOrgs.push(registrationData);
-    setToLocalStorage('pendingOrganizations', pendingOrgs);
+      toast({
+        title: 'Registration Submitted',
+        description: 'Your institution registration is pending admin approval. Check your email for next steps.',
+      });
 
-    toast({
-      title: 'Registration Submitted',
-      description: 'Your institution registration is pending admin approval. Check your email for next steps.',
-    });
-
-    setIsSubmitting(false);
-    router.push('/institution');
+      router.push('/institution');
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast({
+        title: 'Registration Failed',
+        description: error instanceof Error ? error.message : 'Failed to submit registration. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
