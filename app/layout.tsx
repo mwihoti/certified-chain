@@ -1,20 +1,20 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-
+import "@meshsdk/react/styles.css";
 export const metadata: Metadata = {
   title: "Lite-Cert",
   description: "lite-cert",
   authors: [{ name: "Lovable" }],
   openGraph: {
     title: "Lite-Cert",
-    description: "Lovable Generated Project",
+    description: "Licert Team",
     type: "website",
    
   },
   twitter: {
     card: "summary_large_image",
-    site: "@Lovable",
+    site: "x-twitter: lite-cert",
   },
 };
 
