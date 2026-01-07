@@ -325,3 +325,13 @@ export async function deleteOrganization(id: string): Promise<ApiResponse<void>>
     };
   }
 }
+
+export async function downloadOrganizationExcel(orgId: string): Promise<Blob> {
+  const res = await fetch(`/api/organizations/${orgId}`);
+
+  if (!res.ok){
+    throw new Error('Failed to download organization Excel file');
+
+  }
+  return await res.blob();
+}

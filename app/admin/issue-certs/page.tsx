@@ -110,22 +110,27 @@ export default function AdminIssueCerts() {
 
     try {
       const excelData = await downloadOrganizationExcel(org.id);
-    }
-    const mockCertificates: CertificateEntry[] = [];
-    for (let i = 0; i < Math.min(org.numberOfCerts, 5); i++) {
-      mockCertificates.push({
-        recipientName: `Recipient ${i + 1}`,
-        recipientEmail: `recipient${i + 1}@example.com`,
-        recipientPosition: 'Graduate',
-        credentialType: 'Certificate of Completion',
-        issueDate: new Date().toISOString().split('T')[0],
-        status: 'pending',
+      const parsedCerts: ExcelCertificateRow[] = parseExcelFile(excelData);
+      
+      const certEntries: CertificateEntry[] = parsedCerts.map(row => ({
+        ...row,
+        status: 'pending' as const,
+      }));
+       setCertificates(certEntries);
+    setStep('review');
+    } catch (error) {
+      console.error('Failed to load Excel data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load certificate data for this organization.',
+        variant: 'destructive',
       });
     }
-    
-    setCertificates(mockCertificates);
-    setStep('review');
   };
+
+    
+   
+
 
   const generateQRCodeUrl = (txHash: string): string => {
     // Generate QR code URL linking to Cardano explorer
@@ -134,23 +139,24 @@ export default function AdminIssueCerts() {
   };
 
   const processCertificates = async () => {
-    if (!selectedOrg) return;
+    if (!selectedOrg || !connected || !wallet) return;
     
     setStep('processing');
-    
-    try {
-      const results = [];
-      
-      // Process each certificate individually
-      for (let i = 0; i < certificates.length; i++) {
-        const cert = certificates[i];
+    setProcessedCount(0);
+    setProgress(0);
+
+    let hasError = false;
+    for (let i = 0; i < certificates.length; i++) {
+      const cert = certificates[i];
+
+      setCertificates(prev => prev.map((c, idx) => 
+        idx === i ? { ...c, status: 'processing'} : c
         
-        // Update status to processing
-        setCertificates((prev) =>
-          prev.map((c, index) =>
-            index === i ? { ...c, status: 'processing' as const } : c
-          )
-        );
+      ));
+
+        
+    try {
+      
         
         // Generate unique identifier
         const entryNumber = getNextEntryNumber(selectedOrg.id, cert.recipientName);
@@ -175,13 +181,13 @@ export default function AdminIssueCerts() {
         // Submit to blockchain
         const result = await submitCertificateToBlockchain(
           certificateData,
-          identifier.fullIdentifier
+          identifier.fullIdentifier,
+          wallet
         );
         
         // Generate QR code URL
         const qrCodeUrl = generateQRCodeUrl(result.txHash);
         
-        results.push({ ...result, qrCodeUrl });
         
         // Update status to complete
         setCertificates((prev) =>
@@ -198,30 +204,36 @@ export default function AdminIssueCerts() {
           )
         );
         
-        setProcessedCount(i + 1);
-        setProgress(((i + 1) / certificates.length) * 100);
+
+      } catch (error: any) {
+        console.error(`Error minting cert ${i + 1}:`, error);
+        setCertificates(prev => prev.map((c,idx) => idx === i ? {
+          ...c, status: 'error',
+          errorMessage: error.message || 'Unknown error',
+        } : c
+      ));
+      hasError = true;
       }
+      setProcessedCount(i + 1);
+      setProgress(((i + 1) / certificates.length) * 100);
       
-      // Update organization status via API
+   try {
       await updateOrganization(selectedOrg.id, { 
-        status: 'completed', 
+        status: hasError ? 'partial' : 'completed', // Assume backend handles partial
         completedAt: new Date().toISOString() 
       });
-      
-      setStep('complete');
-      toast({
-        title: 'Processing Complete',
-        description: `Successfully issued ${certificates.length} certificates on the blockchain.`,
-      });
     } catch (error) {
-      console.error('Error processing certificates:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to process certificates. Please try again.',
-        variant: 'destructive',
-      });
-      setStep('review');
+      console.error('Failed to update org status:', error);
     }
+
+    setStep('complete');
+    toast({
+      title: hasError ? 'Partial Success' : 'Success',
+      description: hasError 
+        ? 'Some certificates failed. Check the table for details.'
+        : `Successfully issued ${certificates.length} certificates.`,
+      variant: hasError ? 'destructive' : 'default',
+    });
   };
 
   const downloadResults = () => {
@@ -297,25 +309,17 @@ export default function AdminIssueCerts() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!walletConnected ? (
+            {!connected ? (
               <div className="flex items-center gap-4">
-                <Button 
-                  onClick={handleConnectWallet}
-                  disabled={isConnecting}
-                >
-                  {isConnecting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Wallet className="mr-2 h-4 w-4" />
-                      Connect Eternl Wallet
-                    </>
-                  )}
-                </Button>
-                <Alert className="flex-1">
+                <CardanoWallet />
+                {connecting && (
+                  <div className='flex items-center gap-2'>
+                    <Loader2 className='h-4 w-4 animate-spin' />
+                    <span>Connecting...</span>
+                    </div>
+                )}
+
+                <Alert >
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
                     You must connect your wallet to issue certificates
@@ -326,11 +330,11 @@ export default function AdminIssueCerts() {
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 text-success">
                   <CheckCircle className="h-5 w-5" />
-                  <span className="font-medium">Wallet Connected</span>
+                  <span className="font-medium">Wallet Connected: {name}</span>
                 </div>
-                <Badge variant="outline" className="font-mono">
-                  {walletAddress?.substring(0, 10)}...{walletAddress?.substring(walletAddress.length - 8)}
-                </Badge>
+               <Button variant='outline' onClick={disconnect}>
+                Disconnect
+               </Button>
               </div>
             )}
           </CardContent>
@@ -385,7 +389,7 @@ export default function AdminIssueCerts() {
                             <Button
                               size="sm"
                               onClick={() => handleSelectOrganization(org)}
-                              disabled={!walletConnected}
+                              disabled={!connected}
                             >
                               Process
                             </Button>
@@ -617,4 +621,5 @@ export default function AdminIssueCerts() {
       </div>
     </Layout>
   );
+}
 }
