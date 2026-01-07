@@ -15,6 +15,7 @@ const Header = () => {
     { href: '/institution', label: 'Institutions' },
     { href: '/user', label: 'Retrieve Certificate' },
     { href: '/verify', label: 'Verify' },
+    { href: '/admin/issue-certs', label: 'Admin Portal' },
   ];
 
   const isActive = (path: string) => {

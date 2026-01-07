@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   FileText,
   Upload,
@@ -14,6 +15,7 @@ import {
   MoreHorizontal,
   Eye,
   Ban,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,6 +39,7 @@ import Layout from '@/components/layout/Layout';
 import { mockCertificates, mockInstitutions } from '@/lib/mockData';
 
 export default function InstitutionDashboard() {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   
   // Use first institution as the "logged in" institution
@@ -183,6 +186,7 @@ export default function InstitutionDashboard() {
                     <TableHead>Credential</TableHead>
                     <TableHead>Issue Date</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Blockchain</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -199,6 +203,20 @@ export default function InstitutionDashboard() {
                       <TableCell className="max-w-[200px] truncate">{cert.credentialType}</TableCell>
                       <TableCell>{new Date(cert.issueDate).toLocaleDateString()}</TableCell>
                       <TableCell>{getStatusBadge(cert.status)}</TableCell>
+                      <TableCell>
+                        {cert.blockchainTxHash ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(`https://cardanoscan.io/transaction/${cert.blockchainTxHash}`, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            View TX
+                          </Button>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -207,7 +225,9 @@ export default function InstitutionDashboard() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => router.push(`/certificate/view?id=${cert.id}`)}
+                            >
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
