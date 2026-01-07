@@ -54,6 +54,12 @@ const WalletConnector = dynamic(
   { ssr: false }
 );
 
+// Type for the wallet instance from MeshJS
+type BrowserWalletInstance = {
+  getUsedAddresses: () => Promise<string[]>;
+  getBalance: () => Promise<string>;
+};
+
 interface PendingOrganization extends OrganizationData {
   id: string;
   status: string;
@@ -73,7 +79,7 @@ export default function AdminIssueCerts() {
   
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [walletInstance, setWalletInstance] = useState<any>(null);
+  const [walletInstance, setWalletInstance] = useState<BrowserWalletInstance | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   
   const [pendingOrgs, setPendingOrgs] = useState<PendingOrganization[]>([]);
@@ -107,7 +113,7 @@ export default function AdminIssueCerts() {
     }
   };
 
-  const handleWalletConnect = (wallet: any, address: string) => {
+  const handleWalletConnect = (wallet: BrowserWalletInstance, address: string) => {
     setWalletInstance(wallet);
     setWalletAddress(address);
     setWalletConnected(true);

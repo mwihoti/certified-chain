@@ -4,8 +4,15 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Wallet, Loader2 } from 'lucide-react';
 
+// Type for the wallet instance from MeshJS
+type BrowserWalletInstance = {
+  getUsedAddresses: () => Promise<string[]>;
+  getBalance: () => Promise<string>;
+  // Add other methods as needed
+};
+
 interface WalletConnectorProps {
-  onConnect: (wallet: any, address: string) => void;
+  onConnect: (wallet: BrowserWalletInstance, address: string) => void;
   onError: (error: string) => void;
   isConnecting: boolean;
   setIsConnecting: (value: boolean) => void;
@@ -33,7 +40,7 @@ export default function WalletConnector({
       
       // Check if Eternl wallet is installed
       const wallets = BrowserWallet.getInstalledWallets();
-      const hasEternl = wallets.some(w => w.name.toLowerCase().includes('eternl'));
+      const hasEternl = wallets.some(w => w.name === 'eternl' || w.name === 'Eternl');
       
       if (!hasEternl) {
         onError('Eternl wallet not found. Please install Eternl wallet extension.');
@@ -42,7 +49,7 @@ export default function WalletConnector({
       }
       
       // Connect to Eternl wallet - this will prompt the user for PIN/password
-      const wallet = await BrowserWallet.enable('eternl');
+      const wallet = await BrowserWallet.enable('eternl') as BrowserWalletInstance;
       
       if (!wallet) {
         onError('Failed to connect to Eternl wallet. Please try again.');
