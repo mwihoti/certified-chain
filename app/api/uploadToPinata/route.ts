@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
+interface PinataResponse {
+  IpfsHash: string;
+  PinSize: number;
+  Timestamp: string;
+}
+
+interface ErrorResponse {
+  error: string;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -35,25 +45,25 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error("Pinata upload error:", errorData);
+      console.error("Pinata upload error");
       return NextResponse.json(
         { error: "Failed to upload to Pinata" },
         { status: response.status }
       );
     }
 
-    const data = await response.json();
-    console.log("Pinata response:", data);
+    const data: PinataResponse = await response.json();
 
     return NextResponse.json({
       imgHash: data.IpfsHash,
       pinSize: data.PinSize,
       timestamp: data.Timestamp,
     });
-  } catch (error: any) {
-    console.error("Upload error:", error);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
+    console.error("Upload error");
     return NextResponse.json(
-      { error: error.message || "Internal server error" },
+      { error: errorMessage } as ErrorResponse,
       { status: 500 }
     );
   }
