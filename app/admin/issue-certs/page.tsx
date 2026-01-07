@@ -29,6 +29,9 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
+import {useWallet} from '@meshsdk/react';
+import { CardanoWallet } from '@meshsdk/react';
+import { BrowserWallet } from '@meshsdk/core';
 import {
   generateUniqueIdentifier,
   submitCertificateToBlockchain,
@@ -44,7 +47,8 @@ import {
 import { 
   getOrganizations, 
   updateOrganization, 
-  OrganizationData 
+  OrganizationData,
+  downloadOrganizationExcel
 } from '@/lib/services/api';
 
 interface PendingOrganization extends OrganizationData {
@@ -64,10 +68,8 @@ export default function AdminIssueCerts() {
   const router = useRouter();
   const { toast } = useToast();
   
-  const [walletConnected, setWalletConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [walletInstance, setWalletInstance] = useState<any>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const { connected, wallet, connecting, connect, disconnect, name} = useWallet();
+
   
   const [pendingOrgs, setPendingOrgs] = useState<PendingOrganization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<PendingOrganization | null>(null);
@@ -100,38 +102,15 @@ export default function AdminIssueCerts() {
     }
   };
 
-  const handleConnectWallet = async () => {
-    setIsConnecting(true);
-    try {
-      // Simulate wallet connection (in production, this would use @meshsdk/core directly)
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock wallet address for demo
-      const mockAddress = 'addr1qxy...abc123';
-      setWalletAddress(mockAddress);
-      setWalletConnected(true);
-      
-      toast({
-        title: 'Wallet Connected',
-        description: `Connected to: ${mockAddress.substring(0, 10)}...${mockAddress.substring(mockAddress.length - 8)}`,
-      });
-    } catch (error) {
-      console.error('Wallet connection error:', error);
-      toast({
-        title: 'Connection Error',
-        description: 'Failed to connect to wallet. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsConnecting(false);
-    }
-  };
+ 
 
   const handleSelectOrganization = async (org: PendingOrganization) => {
     setSelectedOrg(org);
-    
-    // For demo purposes, create mock certificate data
-    // In production, you would load the actual Excel file
+    setCertificates([]);
+
+    try {
+      const excelData = await downloadOrganizationExcel(org.id);
+    }
     const mockCertificates: CertificateEntry[] = [];
     for (let i = 0; i < Math.min(org.numberOfCerts, 5); i++) {
       mockCertificates.push({
