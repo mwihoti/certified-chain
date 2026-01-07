@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { 
   ArrowLeft, 
   Wallet, 
@@ -46,6 +47,12 @@ import {
   updateOrganization, 
   OrganizationData 
 } from '@/lib/services/api';
+
+// Dynamically import WalletConnector to avoid SSR issues with MeshJS
+const WalletConnector = dynamic(
+  () => import('@/components/wallet/WalletConnector'),
+  { ssr: false }
+);
 
 interface PendingOrganization extends OrganizationData {
   id: string;
@@ -100,73 +107,23 @@ export default function AdminIssueCerts() {
     }
   };
 
-  const handleConnectWallet = async () => {
-    setIsConnecting(true);
-    try {
-      // Dynamically import MeshJS to avoid SSR issues
-      const { BrowserWallet } = await import('@meshsdk/core');
-      
-      // Check if Eternl wallet is installed
-      const wallets = BrowserWallet.getInstalledWallets();
-      const hasEternl = wallets.some(w => w.name.toLowerCase().includes('eternl'));
-      
-      if (!hasEternl) {
-        toast({
-          title: 'Connection Error',
-          description: 'Eternl wallet not found. Please install Eternl wallet extension.',
-          variant: 'destructive',
-        });
-        setIsConnecting(false);
-        return;
-      }
-      
-      // Connect to Eternl wallet - this will prompt the user for PIN/password
-      const wallet = await BrowserWallet.enable('eternl');
-      
-      if (!wallet) {
-        toast({
-          title: 'Connection Error',
-          description: 'Failed to connect to Eternl wallet. Please try again.',
-          variant: 'destructive',
-        });
-        setIsConnecting(false);
-        return;
-      }
-      
-      // Store wallet instance
-      setWalletInstance(wallet);
-      
-      // Get wallet address
-      const addresses = await wallet.getUsedAddresses();
-      const address = addresses?.[0];
-      
-      if (!address) {
-        toast({
-          title: 'Connection Error',
-          description: 'Failed to get wallet address. Please try again.',
-          variant: 'destructive',
-        });
-        setIsConnecting(false);
-        return;
-      }
-      
-      setWalletAddress(address);
-      setWalletConnected(true);
-      
-      toast({
-        title: 'Wallet Connected',
-        description: `Connected to: ${address.substring(0, 10)}...${address.substring(address.length - 8)}`,
-      });
-    } catch (error) {
-      console.error('Wallet connection error:', error);
-      toast({
-        title: 'Connection Error',
-        description: 'Failed to connect to wallet. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsConnecting(false);
-    }
+  const handleWalletConnect = (wallet: any, address: string) => {
+    setWalletInstance(wallet);
+    setWalletAddress(address);
+    setWalletConnected(true);
+    
+    toast({
+      title: 'Wallet Connected',
+      description: `Connected to: ${address.substring(0, 10)}...${address.substring(address.length - 8)}`,
+    });
+  };
+  
+  const handleWalletError = (error: string) => {
+    toast({
+      title: 'Connection Error',
+      description: error,
+      variant: 'destructive',
+    });
   };
 
   const handleSelectOrganization = async (org: PendingOrganization) => {
@@ -362,22 +319,12 @@ export default function AdminIssueCerts() {
           <CardContent>
             {!walletConnected ? (
               <div className="flex items-center gap-4">
-                <Button 
-                  onClick={handleConnectWallet}
-                  disabled={isConnecting}
-                >
-                  {isConnecting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Wallet className="mr-2 h-4 w-4" />
-                      Connect Eternl Wallet
-                    </>
-                  )}
-                </Button>
+                <WalletConnector
+                  onConnect={handleWalletConnect}
+                  onError={handleWalletError}
+                  isConnecting={isConnecting}
+                  setIsConnecting={setIsConnecting}
+                />
                 <Alert className="flex-1">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
