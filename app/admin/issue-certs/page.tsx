@@ -103,17 +103,59 @@ export default function AdminIssueCerts() {
   const handleConnectWallet = async () => {
     setIsConnecting(true);
     try {
-      // Simulate wallet connection (in production, this would use @meshsdk/core directly)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Dynamically import MeshJS to avoid SSR issues
+      const { BrowserWallet } = await import('@meshsdk/core');
       
-      // Mock wallet address for demo
-      const mockAddress = 'addr1qxy...abc123';
-      setWalletAddress(mockAddress);
+      // Check if Eternl wallet is installed
+      const wallets = BrowserWallet.getInstalledWallets();
+      const hasEternl = wallets.some(w => w.name.toLowerCase().includes('eternl'));
+      
+      if (!hasEternl) {
+        toast({
+          title: 'Connection Error',
+          description: 'Eternl wallet not found. Please install Eternl wallet extension.',
+          variant: 'destructive',
+        });
+        setIsConnecting(false);
+        return;
+      }
+      
+      // Connect to Eternl wallet - this will prompt the user for PIN/password
+      const wallet = await BrowserWallet.enable('eternl');
+      
+      if (!wallet) {
+        toast({
+          title: 'Connection Error',
+          description: 'Failed to connect to Eternl wallet. Please try again.',
+          variant: 'destructive',
+        });
+        setIsConnecting(false);
+        return;
+      }
+      
+      // Store wallet instance
+      setWalletInstance(wallet);
+      
+      // Get wallet address
+      const addresses = await wallet.getUsedAddresses();
+      const address = addresses?.[0];
+      
+      if (!address) {
+        toast({
+          title: 'Connection Error',
+          description: 'Failed to get wallet address. Please try again.',
+          variant: 'destructive',
+        });
+        setIsConnecting(false);
+        return;
+      }
+      
+      setWalletAddress(address);
       setWalletConnected(true);
       
       toast({
         title: 'Wallet Connected',
-        description: `Connected to: ${mockAddress.substring(0, 10)}...${mockAddress.substring(mockAddress.length - 8)}`,
+        description: `Connected to: ${address.substring(0, 10)}...${address.substring(address.length - 8)}`,
       });
     } catch (error) {
       console.error('Wallet connection error:', error);
