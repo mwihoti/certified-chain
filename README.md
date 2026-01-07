@@ -36,13 +36,15 @@ A blockchain-based certificate verification platform built on Cardano. LiteCert 
 ## Tech Stack
 
 - **Framework**: Next.js 16 with React 18 and TypeScript
-- **Blockchain**: Cardano via MeshJS SDK
+- **Blockchain**: Cardano via @meshsdk/core (MeshSDK)
 - **Excel Processing**: xlsx library
 - **Cryptography**: crypto-js for hashing
 - **Styling**: Tailwind CSS
 - **UI Components**: shadcn/ui (Radix UI)
 - **State Management**: React Query (TanStack Query)
 - **Icons**: Lucide React
+
+For details on using @meshsdk/core, see [MESHSDK_INTEGRATION.md](./MESHSDK_INTEGRATION.md).
 
 ## Getting Started
 
