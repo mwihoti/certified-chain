@@ -38,6 +38,39 @@ interface Certificate {
   error?: string;
 }
 
+// Helper function to parse CIP-25 metadata and add to certificate list
+function parseAndAddCertificate(
+  nftData: any,
+  assetName: string,
+  policyId: string,
+  txHash: string,
+  list: Certificate[]
+) {
+  const props = nftData.properties || {};
+  const assetUnit = policyId ? policyId + assetName : assetName;
+
+  // Deduplicate by unique identification or name+recipient
+  const uniqueId = props.uniqueIdentifier || nftData.name?.split(' - ')[0] || assetUnit.slice(-8);
+  if (list.some(c => c.uniqueId === uniqueId)) return;
+
+  list.push({
+    uniqueId: uniqueId,
+    assetUnit: assetUnit,
+    name: nftData.name || 'Certificate',
+    recipientName: props.recipientName || 'Unknown',
+    credentialType: props.credentialType || 'N/A',
+    issueDate: props.issueDate || 'N/A',
+    expiryDate: props.expiryDate,
+    organization: props.organization || 'Unknown Organization',
+    image: nftData.image,
+    description: nftData.description,
+    txHash: txHash,
+    explorerUrl: `https://preview.cardanoscan.io/transaction/${txHash}`,
+  });
+
+  console.log('✅ Parsed certificate:', nftData.name);
+}
+
 export default function CertificatesPage() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,26 +92,27 @@ export default function CertificatesPage() {
           return;
         }
 
-        console.log('🔍 Fetching UTxOs from address:', ORG_ADDRESS);
+        console.log('🔍 Fetching transactions from address:', ORG_ADDRESS);
         console.log('📡 Using Blockfrost API key:', BLOCKFROST_API_KEY.substring(0, 10) + '...');
 
-        // 1. Get all UTxOs at the organization's address
-        // Using fetchAddressUTxOs instead of fetchAddressAssets to handle large addresses
-        let utxos;
+        // 1. Get all transactions from the organization's address
+        // This is a minting address, so certificates are in transaction metadata
+        let transactions;
         try {
-          utxos = await provider.fetchAddressUTxOs(ORG_ADDRESS);
-          console.log('📦 Raw UTxOs response from Blockfrost:', utxos);
-          console.log('📊 Response type:', typeof utxos);
-          console.log('📋 Is array?', Array.isArray(utxos));
+          // Fetch transactions (this might need pagination for many transactions)
+          transactions = await provider.fetchAddressTxs(ORG_ADDRESS);
+          console.log('📦 Raw transactions response from Blockfrost:', transactions);
+          console.log('📊 Response type:', typeof transactions);
+          console.log('📋 Is array?', Array.isArray(transactions));
         } catch (fetchError: any) {
-          console.error('❌ Error fetching UTxOs:', fetchError);
+          console.error('❌ Error fetching transactions:', fetchError);
           console.error('Error details:', {
             message: fetchError.message,
             status: fetchError.status,
             statusText: fetchError.statusText
           });
 
-          let errorMessage = 'Failed to fetch data from Blockfrost. ';
+          let errorMessage = 'Failed to fetch transactions from Blockfrost. ';
 
           if (fetchError.message?.includes('Invalid API key') || fetchError.status === 403) {
             errorMessage += 'Your API key appears to be invalid. Please verify it at blockfrost.io';
@@ -95,139 +129,113 @@ export default function CertificatesPage() {
           return;
         }
 
-        // Check if UTxOs is undefined or null
-        if (!utxos) {
-          console.error('❌ No UTxOs returned from provider (undefined/null)');
+        // Check if transactions is undefined or null
+        if (!transactions) {
+          console.error('❌ No transactions returned from provider (undefined/null)');
           setError('No response from Blockfrost. Please verify your API key is valid and for the Preview network.');
           setCertificates([]);
           return;
         }
 
-        // Check if UTxOs is an array
-        if (!Array.isArray(utxos)) {
-          console.error('❌ UTxOs is not an array:', typeof utxos);
-          console.error('Actual response:', JSON.stringify(utxos, null, 2));
-
-          // Check for oversize response
-          if (typeof utxos === 'object' && 'oversize' in utxos) {
-            setError('This address has too many transactions for the standard API. Please contact support or use a different address with fewer transactions.');
-          } else {
-            setError(`Invalid response from Blockfrost (expected array, got ${typeof utxos}). Check console for details.`);
-          }
+        // Check if transactions is an array
+        if (!Array.isArray(transactions)) {
+          console.error('❌ Transactions is not an array:', typeof transactions);
+          console.error('Actual response:', JSON.stringify(transactions, null, 2));
+          setError(`Invalid response from Blockfrost (expected array, got ${typeof transactions}). Check console for details.`);
           setCertificates([]);
           return;
         }
 
         // If empty array
-        if (utxos.length === 0) {
-          console.log('ℹ️ No UTxOs at this address');
-          setError('No certificates have been minted to this address yet.');
+        if (transactions.length === 0) {
+          console.log('ℹ️ No transactions at this address');
+          setError('No transactions found at this address yet.');
           setCertificates([]);
           return;
         }
 
-        console.log(`✅ Found ${utxos.length} UTxOs`);
-
-        // 2. Extract assets from UTxOs
-        const assetsMap = new Map<string, any>();
-
-        for (const utxo of utxos) {
-          if (utxo.amount && Array.isArray(utxo.amount)) {
-            for (const asset of utxo.amount) {
-              // Skip ADA (lovelace)
-              if (asset.unit === 'lovelace') continue;
-
-              // Only include NFTs (quantity === '1')
-              if (asset.quantity === '1') {
-                if (!assetsMap.has(asset.unit)) {
-                  assetsMap.set(asset.unit, {
-                    unit: asset.unit,
-                    quantity: asset.quantity
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        const nftAssets = Array.from(assetsMap.values());
-        console.log(`🎨 Extracted ${nftAssets.length} NFT assets from UTxOs`);
-
-        if (nftAssets.length === 0) {
-          setError('No NFT certificates found at this address.');
-          setCertificates([]);
-          return;
-        }
+        console.log(`✅ Found ${transactions.length} transactions`);
 
         const certList: Certificate[] = [];
 
-        for (const asset of nftAssets) {
+        // 2. For each transaction, fetch metadata and look for CIP-25 (label 721)
+        for (const tx of transactions.slice(0, 50)) { // Limit to 50 most recent to avoid too many API calls
           try {
-            console.log('Fetching metadata for asset:', asset.unit);
+            console.log('🔍 Fetching metadata for transaction:', tx.tx_hash);
 
-            // 2. Fetch metadata for this asset (CIP-25)
-            const metadata = await provider.fetchAssetMetadata(asset.unit);
+            // Fetch transaction info including metadata
+            const txInfo = await provider.fetchTxInfo(tx.tx_hash);
 
-            if (!metadata || !metadata['721']) {
-              console.log('No CIP-25 metadata found for', asset.unit);
+            if (!txInfo || !txInfo.metadata) {
+              console.log('No metadata found for', tx.tx_hash);
               continue;
             }
 
-            // The metadata is nested under the policy ID
-            const policyId = asset.unit.slice(0, 56); // First 56 chars = policyId
-            const assetName = asset.unit.slice(56); // Rest = asset name in hex
+            console.log('📊 Metadata found labels:', Object.keys(txInfo.metadata));
 
-            // Try to get metadata from the policy ID first
-            let nftData = metadata['721']?.[policyId]?.[assetName];
+            // Look for CIP-25 metadata (label 721)
+            // It might be top-level or nested under label 0
+            let metadata721 = txInfo.metadata['721'];
 
-            // If not found, try direct access
-            if (!nftData) {
-              nftData = metadata['721']?.[assetName];
+            if (!metadata721 && txInfo.metadata['0']) {
+              console.log('🔎 Checking Label 0 for nested 721 metadata');
+              metadata721 = (txInfo.metadata['0'] as any)?.['721'];
             }
 
-            // If still not found, try getting the first available key
-            if (!nftData) {
-              const policyKeys = Object.keys(metadata['721']);
-              if (policyKeys.length > 0) {
-                const firstPolicy = policyKeys[0];
-                const assetKeys = Object.keys(metadata['721'][firstPolicy]);
-                if (assetKeys.length > 0) {
-                  nftData = metadata['721'][firstPolicy][assetKeys[0]];
+            if (!metadata721) {
+              // Try to find ANY key named '721' in any label
+              for (const label of Object.keys(txInfo.metadata)) {
+                const labelData = txInfo.metadata[label];
+                if (labelData && typeof labelData === 'object' && '721' in labelData) {
+                  console.log(`🔎 Found 721 nested under Label ${label}`);
+                  metadata721 = (labelData as any)['721'];
+                  break;
                 }
               }
             }
 
-            if (!nftData) {
-              console.log('Could not parse NFT data from metadata for', asset.unit);
+            if (!metadata721) {
+              console.log('No CIP-25 (721) metadata in', tx.tx_hash);
               continue;
             }
 
-            const props = nftData.properties || {};
+            console.log('📜 Found CIP-25 metadata in transaction:', tx.tx_hash);
 
-            certList.push({
-              uniqueId: props.uniqueIdentifier || nftData.name?.split(' - ')[0] || asset.unit.slice(-8),
-              assetUnit: asset.unit,
-              name: nftData.name || 'Certificate',
-              recipientName: props.recipientName || 'Unknown',
-              credentialType: props.credentialType || 'N/A',
-              issueDate: props.issueDate || 'N/A',
-              expiryDate: props.expiryDate,
-              organization: props.organization || 'Unknown Organization',
-              image: nftData.image,
-              description: nftData.description,
-              txHash: metadata.onchain_metadata?.txHash,
-              explorerUrl: `https://preview.cardanoscan.io/token/${asset.unit}`,
-            });
+            // Parse the metadata structure
+            // 1. Standard CIP-25: { "721": { "<policy_id>": { "<asset_name>": { ... } } } }
+            // 2. Flatter format (sometimes used): { "721": { "<asset_name>": { ... } } }
+
+            for (const key of Object.keys(metadata721)) {
+              const value = metadata721[key];
+
+              if (!value || typeof value !== 'object') continue;
+
+              // Check if this level is already the NFT data (has 'name' property)
+              if ('name' in value && typeof value.name === 'string') {
+                const nftData = value as any;
+                const assetName = key;
+
+                parseAndAddCertificate(nftData, assetName, '', tx.tx_hash, certList);
+              } else {
+                // It might be a policy ID level
+                for (const assetName of Object.keys(value)) {
+                  const nftData = (value as any)[assetName];
+                  if (nftData && typeof nftData === 'object' && 'name' in nftData) {
+                    parseAndAddCertificate(nftData, assetName, key, tx.tx_hash, certList);
+                  }
+                }
+              }
+            }
           } catch (err) {
-            console.error('Error fetching metadata for asset', asset.unit, err);
+            console.error('Error fetching metadata for transaction', tx.tx_hash, err);
           }
         }
 
-        console.log(`Successfully parsed ${certList.length} certificates`);
+        console.log(`🎉 Successfully parsed ${certList.length} certificates from transactions`);
         setCertificates(certList);
 
         if (certList.length === 0) {
-          setError('Found NFT assets but could not parse certificate metadata. Make sure they follow CIP-25 standard.');
+          setError('Found transactions but no certificate metadata. Make sure certificates follow CIP-25 standard with label 721.');
         }
 
       } catch (err: any) {
