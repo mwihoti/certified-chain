@@ -1,8 +1,11 @@
+'use client';
 import Link from 'next/link';
 import { Building2, User, ShieldCheck, ArrowRight, Lock, Globe, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Layout from '@/components/layout/Layout';
+
+
 
 export default function Home() {
   const portals = [
@@ -150,6 +153,7 @@ export default function Home() {
           </Link>
         </div>
       </section>
+
     </Layout>
   );
 }
