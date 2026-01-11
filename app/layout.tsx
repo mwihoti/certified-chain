@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import "@meshsdk/react/styles.css";
+
 export const metadata: Metadata = {
   title: "Lite-Cert",
   description: "lite-cert",
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
     title: "Lite-Cert",
     description: "Licert Team",
     type: "website",
-   
+
   },
   twitter: {
     card: "summary_large_image",
@@ -26,7 +27,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );
