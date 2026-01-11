@@ -12,7 +12,7 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   if (!BLOCKFROST_API_KEY || BLOCKFROST_API_KEY === 'previewYourProjectIdHere') {
     console.warn('⚠️ Blockfrost API key not configured! Please add NEXT_PUBLIC_BLOCKFROST_PROJECT_ID to .env.local');
   } else {
-    console.log('✅ Blockfrost API key loaded:', BLOCKFROST_API_KEY.substring(0, 10) + '...');
+    console.log('✅ Blockfrost API key loaded:', (BLOCKFROST_API_KEY || '').substring(0, 10) + '...');
   }
 }
 
@@ -93,7 +93,7 @@ export default function CertificatesPage() {
         }
 
         console.log('🔍 Fetching transactions from address:', ORG_ADDRESS);
-        console.log('📡 Using Blockfrost API key:', BLOCKFROST_API_KEY.substring(0, 10) + '...');
+        console.log('📡 Using Blockfrost API key:', (BLOCKFROST_API_KEY || '').substring(0, 10) + '...');
 
         // 1. Get all transactions from the organization's address
         // This is a minting address, so certificates are in transaction metadata
@@ -166,68 +166,87 @@ export default function CertificatesPage() {
             // Fetch transaction info including metadata
             const txInfo = await provider.fetchTxInfo(tx.tx_hash);
 
-            if (!txInfo || !txInfo.metadata) {
-              console.log('No metadata found for', tx.tx_hash);
+            if (!tx || !tx.tx_hash) {
+              console.log('⚠️ Skipping invalid transaction object:', tx);
               continue;
             }
 
-            console.log('📊 Metadata found labels:', Object.keys(txInfo.metadata));
+            const shortHash = tx.tx_hash.substring(0, 8);
 
-            // Look for CIP-25 metadata (label 721)
-            // It might be top-level or nested under label 0
-            let metadata721 = txInfo.metadata['721'];
-
-            if (!metadata721 && txInfo.metadata['0']) {
-              console.log('🔎 Checking Label 0 for nested 721 metadata');
-              metadata721 = (txInfo.metadata['0'] as any)?.['721'];
+            if (!txInfo || !txInfo.metadata) {
+              console.log(`[${shortHash}] No metadata property found on txInfo`);
+              continue;
             }
 
-            if (!metadata721) {
-              // Try to find ANY key named '721' in any label
-              for (const label of Object.keys(txInfo.metadata)) {
-                const labelData = txInfo.metadata[label];
-                if (labelData && typeof labelData === 'object' && '721' in labelData) {
-                  console.log(`🔎 Found 721 nested under Label ${label}`);
+            const labels = Object.keys(txInfo.metadata);
+            console.log(`[${shortHash}] 📊 Labels found:`, labels);
+
+            let metadata721: any = null;
+
+            // Search all labels for 721 metadata, handling potential stringified JSON
+            for (const label of labels) {
+              let labelData = txInfo.metadata[label];
+
+              if (typeof labelData === 'string' && (labelData.trim().startsWith('{') || labelData.trim().startsWith('['))) {
+                try { labelData = JSON.parse(labelData); console.log(`[${shortHash}]   - Parsed JSON in label ${label}`); } catch (e) { }
+              }
+
+              if (label === '721') {
+                metadata721 = labelData;
+                console.log(`[${shortHash}]   - ✅ Found 721 metadata directly in label 721`);
+              } else if (labelData && typeof labelData === 'object') {
+                if ('721' in labelData) {
                   metadata721 = (labelData as any)['721'];
-                  break;
+                  console.log(`[${shortHash}]   - ✅ Found 721 metadata nested inside label ${label}`);
+                } else if ((labelData as any).json_metadata && (labelData as any).json_metadata['721']) {
+                  metadata721 = (labelData as any).json_metadata['721'];
+                  console.log(`[${shortHash}]   - ✅ Found 721 metadata nested inside label ${label}.json_metadata`);
                 }
               }
+              if (metadata721) break;
             }
 
             if (!metadata721) {
-              console.log('No CIP-25 (721) metadata in', tx.tx_hash);
+              console.log(`[${shortHash}] ❌ No 721 metadata found in any label`);
               continue;
             }
 
-            console.log('📜 Found CIP-25 metadata in transaction:', tx.tx_hash);
-
-            // Parse the metadata structure
-            // 1. Standard CIP-25: { "721": { "<policy_id>": { "<asset_name>": { ... } } } }
-            // 2. Flatter format (sometimes used): { "721": { "<asset_name>": { ... } } }
+            console.log(`[${shortHash}] 📜 Processing 721 metadata...`);
 
             for (const key of Object.keys(metadata721)) {
-              const value = metadata721[key];
+              let value = metadata721[key];
+
+              if (typeof value === 'string' && (value.trim().startsWith('{') || value.trim().startsWith('['))) {
+                try { value = JSON.parse(value); } catch (e) { }
+              }
 
               if (!value || typeof value !== 'object') continue;
 
-              // Check if this level is already the NFT data (has 'name' property)
-              if ('name' in value && typeof value.name === 'string') {
-                const nftData = value as any;
-                const assetName = key;
+              // Check if this level is the NFT data (has 'name' or 'recipientName')
+              const hasName = 'name' in value && typeof value.name === 'string';
+              const hasProps = value.properties && typeof value.properties === 'object';
 
-                parseAndAddCertificate(nftData, assetName, '', tx.tx_hash, certList);
+              if (hasName || hasProps) {
+                console.log(`[${shortHash}]   - 💎 Found NFT structure: ${key}`);
+                parseAndAddCertificate(value, key, '', tx.tx_hash, certList);
               } else {
                 // It might be a policy ID level
+                console.log(`[${shortHash}]   - 📁 Likely policy ID level: ${key}. Scanning children...`);
                 for (const assetName of Object.keys(value)) {
-                  const nftData = (value as any)[assetName];
-                  if (nftData && typeof nftData === 'object' && 'name' in nftData) {
+                  let nftData = (value as any)[assetName];
+                  if (typeof nftData === 'string' && (nftData.trim().startsWith('{') || nftData.trim().startsWith('['))) {
+                    try { nftData = JSON.parse(nftData); } catch (e) { }
+                  }
+
+                  if (nftData && typeof nftData === 'object' && ('name' in nftData || (nftData.properties && typeof nftData.properties === 'object'))) {
+                    console.log(`[${shortHash}]   - 💎 Found nested NFT structure: ${assetName}`);
                     parseAndAddCertificate(nftData, assetName, key, tx.tx_hash, certList);
                   }
                 }
               }
             }
           } catch (err) {
-            console.error('Error fetching metadata for transaction', tx.tx_hash, err);
+            console.error(`[${tx.tx_hash ? tx.tx_hash.substring(0, 8) : 'unknown'}] ❌ Error during scan:`, err);
           }
         }
 
@@ -235,7 +254,7 @@ export default function CertificatesPage() {
         setCertificates(certList);
 
         if (certList.length === 0) {
-          setError('Found transactions but no certificate metadata. Make sure certificates follow CIP-25 standard with label 721.');
+          setError('Found transactions but no certificate metadata. This might happen if your metadata uses a non-standard structure or the scan limit was reached.');
         }
 
       } catch (err: any) {
