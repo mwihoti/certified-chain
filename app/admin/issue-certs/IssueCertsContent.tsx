@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react';
 import { useWallet } from '@meshsdk/react';
 import { CardanoWallet } from '@meshsdk/react';
 import { Transaction, ForgeScript } from '@meshsdk/core';
-import { BlockfrostProvider } from '@meshsdk/core';
+import { BlockfrostProvider,  } from '@meshsdk/core';
+import { Mint, Policy, TxOutputBuilder } from '@meshsdk/core';
 import * as XLSX from 'xlsx';
 import {
   ArrowLeft,
@@ -25,20 +26,9 @@ import {
   ImageIcon
 } from 'lucide-react';
 
-// Validate and initialize Blockfrost Provider for Preview network
-const BLOCKFROST_API_KEY = process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID;
-
-// Log API key status in development
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  if (!BLOCKFROST_API_KEY || BLOCKFROST_API_KEY === 'previewYourProjectIdHere') {
-    console.warn('⚠️ Blockfrost API key not configured! Please add NEXT_PUBLIC_BLOCKFROST_PROJECT_ID to .env.local');
-  } else {
-    console.log('✅ Blockfrost API key loaded:', BLOCKFROST_API_KEY.substring(0, 10) + '...');
-  }
-}
-
+// Initialize Blockfrost provider for testnet
 const blockfrostProvider = new BlockfrostProvider(
-  BLOCKFROST_API_KEY || 'previewYourProjectIdHere'
+  process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID || 'preprodYourProjectIdHere'
 );
 
 interface CertificateData {
@@ -74,7 +64,7 @@ export default function IssueCertsContent() {
     type: 'university',
     contactName: ''
   });
-
+  
   const [certificates, setCertificates] = useState<CertificateData[]>([]);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [designFile, setDesignFile] = useState<File | null>(null);
@@ -174,10 +164,34 @@ export default function IssueCertsContent() {
   };
 
   // Mint certificates to Cardano blockchain
-  const mintCertificateNFT = async (cert: CertificateData, uniqueId: string): Promise<{ txHash: string, explorerUrl: string }> => {
+  const mintCertificateNFT = async (cert: CertificateData, uniqueId: string): Promise<{txHash: string, explorerUrl: string}> => {
     if (!wallet) throw new Error('Wallet not connected');
 
     try {
+      // simple time-lock minting policy
+      const mintingPolicy: Policy = {
+        type: 'all',
+        scripts: [
+          {
+            type: 'sig',
+            keyHash: await wallet.getChangeAddress().then(addr => addr.slice(0, 58)),
+          },
+          {
+            type: 'before',
+            slot: (await blockfrostProvider.fetchProtocolParameters()).slot + 1000000,
+          },
+        ],
+      };
+
+      const ForgeScript: ForgeScript = {
+        type: 'mintingPolicy',
+        Policy: mintingPolicy,
+      };
+
+      // Get Asset name: uniqueId as hex
+      const assetName = Buffer.from(uniqueId, 'utf-8').toString('hex');
+      
+
       // Create metadata for the certificate NFT
       const metadata = {
         721: {
@@ -201,21 +215,21 @@ export default function IssueCertsContent() {
 
       // Build and submit transaction
       const tx = new Transaction({ initiator: wallet });
-
+      
       // Add metadata
       tx.setMetadata(0, metadata);
 
       // Build the transaction
       const unsignedTx = await tx.build();
-
+      
       // Sign the transaction
       const signedTx = await wallet.signTx(unsignedTx);
-
+      
       // Submit to blockchain
       const txHash = await wallet.submitTx(signedTx);
-
+      
       const explorerUrl = `https://preview.cardanoscan.io/transaction/${txHash}`;
-
+      
       return { txHash, explorerUrl };
     } catch (error) {
       console.error('Minting error:', error);
@@ -235,7 +249,7 @@ export default function IssueCertsContent() {
 
     for (let i = 0; i < certificates.length; i++) {
       const cert = certificates[i];
-
+      
       setCertificates(prev => prev.map((c, idx) =>
         idx === i ? { ...c, status: 'processing' } : c
       ));
@@ -298,7 +312,7 @@ export default function IssueCertsContent() {
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Certificates');
-
+    
     const timestamp = new Date().toISOString().split('T')[0];
     XLSX.writeFile(workbook, `${organization.name}_certificates_${timestamp}.xlsx`);
   };
@@ -310,7 +324,7 @@ export default function IssueCertsContent() {
       complete: 'bg-green-100 text-green-800 border border-green-300',
       error: 'bg-red-100 text-red-800 border border-red-300'
     };
-
+    
     const labels = {
       pending: 'Pending',
       processing: 'Processing',
@@ -424,7 +438,7 @@ export default function IssueCertsContent() {
                   <div>
                     <p className="text-sm text-amber-800 font-medium">Wallet Required</p>
                     <p className="text-sm text-amber-700 mt-1">
-                      Connect your wallet to access minting features.
+                      Connect your wallet to access minting features. 
                     </p>
                   </div>
                 </div>
@@ -471,7 +485,7 @@ export default function IssueCertsContent() {
                   <input
                     type="text"
                     value={organization.name}
-                    onChange={(e) => setOrganization({ ...organization, name: e.target.value })}
+                    onChange={(e) => setOrganization({...organization, name: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g., Tech University"
                   />
@@ -483,7 +497,7 @@ export default function IssueCertsContent() {
                   <input
                     type="email"
                     value={organization.email}
-                    onChange={(e) => setOrganization({ ...organization, email: e.target.value })}
+                    onChange={(e) => setOrganization({...organization, email: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="admin@techuniversity.edu"
                   />
@@ -494,7 +508,7 @@ export default function IssueCertsContent() {
                   </label>
                   <select
                     value={organization.type}
-                    onChange={(e) => setOrganization({ ...organization, type: e.target.value })}
+                    onChange={(e) => setOrganization({...organization, type: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="university">University</option>
@@ -510,7 +524,7 @@ export default function IssueCertsContent() {
                   <input
                     type="text"
                     value={organization.contactName}
-                    onChange={(e) => setOrganization({ ...organization, contactName: e.target.value })}
+                    onChange={(e) => setOrganization({...organization, contactName: e.target.value})}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="John Doe"
                   />
@@ -796,8 +810,8 @@ export default function IssueCertsContent() {
                 <div>
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">Certificates Minted Successfully!</h3>
                   <p className="text-gray-600">
-                    {certificates.filter(c => c.status === 'complete').length} of {certificates.length} certificates
-                    for {organization.name} have been minted on Cardano Preview testnet.
+                    {certificates.filter(c => c.status === 'complete').length} of {certificates.length} certificates 
+                    for {organization.name} have been minted on Cardano Preprod testnet.
                   </p>
                 </div>
 

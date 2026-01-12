@@ -19,6 +19,8 @@ import {
   CertificateData,
 } from '@/lib/services/cardano';
 import { saveCertificate } from '@/lib/services/api';
+import { useWallet } from '@meshsdk/react';
+import { CardanoWallet } from '@meshsdk/react';
 
 export default function IssueCertificate() {
   const router = useRouter();
@@ -27,7 +29,20 @@ export default function IssueCertificate() {
   const [progress, setProgress] = useState(0);
   const [txHash, setTxHash] = useState('');
   const [uniqueIdentifier, setUniqueIdentifier] = useState('');
+  const { connected, wallet} = useWallet();
+  const [assets, setAssets] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
+  async function getAssets() {
+    if (wallet) {
+      setLoading(true);
+      const _assets = await wallet.getAssets();
+      console.log(_assets);
+      setAssets(_assets);
+      setLoading(false);
+
+    }
+  }
   const [formData, setFormData] = useState({
     recipientName: '',
     recipientEmail: '',

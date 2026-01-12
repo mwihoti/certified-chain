@@ -1,7 +1,27 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { value } from '@meshsdk/core';
+import { CreateServerClient } from '@supabase/ssr';
+import { createServer } from 'http';
+import { cookies } from 'next/headers';
 
+export async function createClient() {
+  const cookieStore = await cookies();
 
-
-export function createClient() {
-  return createSupabaseClient('https://xyzcompany.supabase.co', 'publishable-or-anon-key');
+  return CreateServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
+  {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          }); } catch (error) {
+            console.error('Error setting cookies:', error);
+        }
+      }
+    }
+  })
 }
