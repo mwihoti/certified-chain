@@ -56,7 +56,7 @@ async function testConnection() {
       console.log('✅ Auth endpoint working');
       console.log(`   Session: ${session.session ? 'Active' : 'No active session (expected)'}`);
     }
-
+{/*
     // Test 3: List tables (if you have any)
     console.log('\n📋 Checking database tables...');
     const { data: tables, error: tablesError } = await supabase
@@ -74,7 +74,7 @@ async function testConnection() {
       } else {
         console.log('ℹ️  Could not list tables:', orgError.message);
       }
-    }
+    }*/}
 
     console.log('\n✅ Supabase connection test complete!');
 

@@ -83,6 +83,12 @@ bun dev
 ```
 http://localhost:3000
 ```
+5. Test supabase connection locally
+```
+bun run scripts/test-supabase.ts
+```
+
+
 
 ## Project Structure
 
