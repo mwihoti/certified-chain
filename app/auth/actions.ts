@@ -9,7 +9,9 @@ export async function signIn({ email, password}: SignInCredentials): Promise<Aut
     const { data, error} = await supabase.auth.signInWithPassword({ email, password});
 
     if (error) {
+        console.error('sign-in error:', error.message);
         return { user: null, error: error.message};
+        
     }
     return {
         user: data.user ? {
@@ -26,6 +28,9 @@ export async function signIn({ email, password}: SignInCredentials): Promise<Aut
 export async function signUp({ email, password, metadata}: SignUpCredentials): Promise<AuthResponse> {
     const supabase = await createClient();
 
+    console.log('User Email:', email);
+    console.log('Signing up user wiith metadata:', metadata);
+
     const { data, error} = await supabase.auth.signUp({
         email, 
         password,
@@ -35,7 +40,12 @@ export async function signUp({ email, password, metadata}: SignUpCredentials): P
     });
 
     if (error) {
+        console.error('sign-up error:', error.message);
         return { user: null, error: error.message };
+    }
+    // check if user was created but needs email confirmation
+    if (data.user && !data.session) {
+        console.log('user sign up needs email confirmation')
     }
     return {
         user: data.user ? {
@@ -55,6 +65,7 @@ export async function signOut() : Promise<{ error: string | null }> {
     const { error } = await supabase.auth.signOut();
 
     if (error) {
+        console.error('sign-out error:', error.message);
         return { error: error.message }; 
     }
     redirect('/');
