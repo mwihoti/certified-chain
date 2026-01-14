@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import { signUp } from '../actions';
 import { set } from 'react-hook-form';
@@ -9,6 +10,7 @@ import { set } from 'react-hook-form';
 
 export default function AuthRegisterPage() {
     const [isLoading, setIsLoading] = useState(false);
+    const router = useRouter();
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
     const [formData, setFormData] = useState({
@@ -50,7 +52,7 @@ export default function AuthRegisterPage() {
     setSuccess(true);
     setIsLoading(false);
 }
-
+{/*
 if (success) {
     return (
 
@@ -71,6 +73,11 @@ if (success) {
             </div>
         </div>
     );
+}*/}
+if (success) {
+    return (
+        router.push('/institution/dashboard')
+    )
 }
 
 return (
@@ -137,7 +144,7 @@ return (
                                     />
                                     </div>
                                     <div>
-                                        <label className='confirmPassword' className="block text-sm font-medium text-[hsl(var(--foreground))] mb-2">
+                                        <label htmlFor="confirmPassword" className="block text-sm font-medium text-[hsl(var(--foreground))] mb-2">
                                             Confirm Password
                                         </label>
                                         <input
