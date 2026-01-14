@@ -1,12 +1,12 @@
 import { value } from '@meshsdk/core';
-import { CreateServerClient } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { createServer } from 'http';
 import { cookies } from 'next/headers';
 
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return CreateServerClient(
+  return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
   {
