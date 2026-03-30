@@ -15,10 +15,12 @@ export interface CertificateRecord {
   institutionId: string;
   institutionName: string;
   blockchainTxHash: string;
+  blockchainTxIndex: number;
   certificateHash: string;
   status: 'valid' | 'revoked' | 'expired';
   revokedAt?: string;
   revokedReason?: string;
+  revokeTxHash?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,15 +136,18 @@ export async function updateCertificate(
   }
 }
 
-// Revoke certificate
+// Revoke certificate — optionally record the on-chain revocation tx hash
 export async function revokeCertificate(
-  uniqueId: string
+  uniqueId: string,
+  revokeTxHash?: string
 ): Promise<ApiResponse<CertificateRecord>> {
   try {
     const response = await fetch(
       `${API_BASE_URL}/certificates?uniqueId=${encodeURIComponent(uniqueId)}`,
       {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ revokeTxHash }),
       }
     );
 

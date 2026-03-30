@@ -1,0 +1,13 @@
+name = "litecert/registry"
+version = "0.0.0"
+compiler = "v1.1.9"
+
+[repository]
+user = "litecert"
+project = "registry"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2.1.0"
+source = "github"

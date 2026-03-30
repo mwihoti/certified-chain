@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,34 +15,37 @@ import {
   generateUniqueIdentifier,
   submitCertificateToBlockchain,
   getNextEntryNumber,
-  hashCertificateData,
   CertificateData,
 } from '@/lib/services/cardano';
 import { saveCertificate } from '@/lib/services/api';
 import { useWallet } from '@meshsdk/react';
 import { CardanoWallet } from '@meshsdk/react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function IssueCertificate() {
   const router = useRouter();
   const { toast } = useToast();
+  const { connected, wallet } = useWallet();
   const [step, setStep] = useState<'form' | 'processing' | 'complete'>('form');
   const [progress, setProgress] = useState(0);
   const [txHash, setTxHash] = useState('');
   const [uniqueIdentifier, setUniqueIdentifier] = useState('');
-  const { connected, wallet} = useWallet();
-  const [assets, setAssets] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [institutionName, setInstitutionName] = useState('');
+  const [institutionId, setInstitutionId] = useState('');
 
-  async function getAssets() {
-    if (wallet) {
-      setLoading(true);
-      const _assets = await wallet.getAssets();
-      console.log(_assets);
-      setAssets(_assets);
-      setLoading(false);
-
+  useEffect(() => {
+    async function loadInstitution() {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.user_metadata) {
+        const meta = session.user.user_metadata;
+        setInstitutionName(meta.institution_name || '');
+        setInstitutionId(meta.institution_id || session.user.id);
+      }
     }
-  }
+    loadInstitution();
+  }, []);
+
   const [formData, setFormData] = useState({
     recipientName: '',
     recipientEmail: '',
@@ -60,37 +63,43 @@ export default function IssueCertificate() {
     'Professional Certification',
     'Training Completion',
     'Board Certification',
+    'Professional Player License',
+    'Coaching License',
+    'Referee Certification',
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!connected || !wallet) {
+      toast({
+        title: 'Wallet Required',
+        description: 'Please connect your Cardano wallet before issuing a certificate.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!institutionName || !institutionId) {
+      toast({
+        title: 'Institution Not Set',
+        description: 'Institution details are missing. Please ensure you are logged in.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setStep('processing');
 
     try {
-      // Step 1: Generate unique identifier (20%)
       setProgress(20);
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      
-      // Mock institution data - in production, get from auth session
-      const institutionName = 'Cardano State University';
-      const institutionId = 'inst-001';
-      
-      const entryNumber = getNextEntryNumber(institutionId, formData.recipientName);
-      const identifier = generateUniqueIdentifier(
-        institutionName,
-        formData.recipientName,
-        entryNumber
-      );
-      
+
+      const entryNumber = await getNextEntryNumber(institutionId, formData.recipientName);
+      const identifier = generateUniqueIdentifier(institutionName, formData.recipientName, entryNumber);
       setUniqueIdentifier(identifier.fullIdentifier);
 
-      // Step 2: Hash certificate data (45%)
       setProgress(45);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Step 3: Submit to blockchain (70%)
-      setProgress(70);
-      
       const certificateData: CertificateData = {
         recipientName: formData.recipientName,
         recipientEmail: formData.recipientEmail,
@@ -102,18 +111,19 @@ export default function IssueCertificate() {
         institutionName,
       };
 
+      setProgress(70);
+
       const result = await submitCertificateToBlockchain(
         certificateData,
-        identifier.fullIdentifier
+        identifier.fullIdentifier,
+        wallet
       );
 
-      // Step 4: Save to backend API (90%)
       setProgress(90);
-      
-      // Generate certificate number (in production, this would come from backend)
-      const certificateNumber = `${institutionName.substring(0, 3).toUpperCase()}-${new Date().getFullYear()}-${String(entryNumber).padStart(5, '0')}`;
-      
-      // Save certificate to backend
+
+      const year = new Date().getFullYear();
+      const certificateNumber = `${institutionName.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase()}-${year}-${String(entryNumber).padStart(5, '0')}`;
+
       const saveResult = await saveCertificate({
         uniqueIdentifier: identifier.fullIdentifier,
         certificateNumber,
@@ -126,29 +136,27 @@ export default function IssueCertificate() {
         institutionId,
         institutionName,
         blockchainTxHash: result.txHash,
+        blockchainTxIndex: result.txIndex,
         certificateHash: result.certificateHash,
       });
-      
+
       if (!saveResult.success) {
-        console.warn('Failed to save certificate to backend:', saveResult.error);
-        // Continue anyway - blockchain submission succeeded
+        console.warn('Failed to save certificate to database:', saveResult.error);
       }
-      
+
       setTxHash(result.txHash);
       setProgress(100);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      
       setStep('complete');
-      
+
       toast({
-        title: 'Certificate Issued Successfully',
-        description: `Certificate ${identifier.fullIdentifier} has been anchored on Cardano blockchain.`,
+        title: 'Certificate Issued',
+        description: `${identifier.fullIdentifier} anchored on Cardano.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error issuing certificate:', error);
       toast({
         title: 'Error',
-        description: 'Failed to issue certificate. Please try again.',
+        description: error?.message || 'Failed to issue certificate. Please try again.',
         variant: 'destructive',
       });
       setStep('form');
@@ -176,7 +184,25 @@ export default function IssueCertificate() {
                 Create a new blockchain-verified credential for a recipient.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
+              {/* Wallet connection */}
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                <div className="flex items-center gap-2 text-sm">
+                  {connected ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-success" />
+                      <span className="text-success font-medium">Wallet connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 text-warning" />
+                      <span className="text-muted-foreground">Connect wallet to issue</span>
+                    </>
+                  )}
+                </div>
+                <CardanoWallet />
+              </div>
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -206,14 +232,11 @@ export default function IssueCertificate() {
                   <Label htmlFor="recipientPosition">Position/Role</Label>
                   <Input
                     id="recipientPosition"
-                    placeholder="e.g., Graduate, Physician, Developer"
+                    placeholder="e.g., Graduate, Physician, Coach"
                     value={formData.recipientPosition}
                     onChange={(e) => setFormData({ ...formData, recipientPosition: e.target.value })}
                     required
                   />
-                  <p className="text-xs text-muted-foreground">
-                    This will be used along with certificate number for retrieval.
-                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -259,7 +282,7 @@ export default function IssueCertificate() {
                 </div>
 
                 <div className="pt-4">
-                  <Button type="submit" className="w-full">
+                  <Button type="submit" className="w-full" disabled={!connected}>
                     <Send className="mr-2 h-4 w-4" />
                     Issue Certificate
                   </Button>
@@ -280,7 +303,7 @@ export default function IssueCertificate() {
                     {progress < 30 && 'Generating unique identifier...'}
                     {progress >= 30 && progress < 60 && 'Hashing certificate data...'}
                     {progress >= 60 && progress < 90 && 'Submitting to Cardano blockchain...'}
-                    {progress >= 90 && 'Finalizing transaction...'}
+                    {progress >= 90 && 'Saving to database...'}
                   </p>
                 </div>
                 <Progress value={progress} className="max-w-md mx-auto" />
@@ -315,19 +338,21 @@ export default function IssueCertificate() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button onClick={() => {
-                    setStep('form');
-                    setProgress(0);
-                    setUniqueIdentifier('');
-                    setFormData({
-                      recipientName: '',
-                      recipientEmail: '',
-                      recipientPosition: '',
-                      credentialType: '',
-                      issueDate: new Date().toISOString().split('T')[0],
-                      expiryDate: '',
-                    });
-                  }}>
+                  <Button
+                    onClick={() => {
+                      setStep('form');
+                      setProgress(0);
+                      setUniqueIdentifier('');
+                      setFormData({
+                        recipientName: '',
+                        recipientEmail: '',
+                        recipientPosition: '',
+                        credentialType: '',
+                        issueDate: new Date().toISOString().split('T')[0],
+                        expiryDate: '',
+                      });
+                    }}
+                  >
                     Issue Another
                   </Button>
                   <Button variant="outline" onClick={() => router.push('/institution/dashboard')}>
@@ -341,4 +366,4 @@ export default function IssueCertificate() {
       </div>
     </Layout>
   );
-};
+}

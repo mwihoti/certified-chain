@@ -1,0 +1,13 @@
+{
+  "name": "litecert-midnight-certs",
+  "version": "0.0.1",
+  "description": "LiteCert ZK certificate proof contracts for Midnight Network",
+  "scripts": {
+    "build": "compactc src/certificate_proof.compact dist/",
+    "test": "compact-test"
+  },
+  "devDependencies": {
+    "@midnight-ntwrk/compact-cli": "latest"
+  },
+  "readme": "Install Midnight toolchain first: https://docs.midnight.network/getting-started"
+}

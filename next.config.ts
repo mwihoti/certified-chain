@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
     "@cardano-sdk/core",
     "@cardano-sdk/crypto",
     "@cardano-sdk/input-selection",
+    "libsodium-wrappers-sumo",
   ],
   env: {
     NEXT_PUBLIC_CARDANO_NETWORK: process.env.NEXT_PUBLIC_CARDANO_NETWORK,
@@ -22,7 +23,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BLOCKFROST_API_KEY: process.env.NEXT_PUBLIC_BLOCKFROST_API_KEY,
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   },
-  webpack: (config, { isServer }) => {
+  webpack: (config, { isServer, webpack }) => {
     // Handle WASM files
     config.experiments = {
       ...config.experiments,
@@ -43,6 +44,13 @@ const nextConfig: NextConfig = {
       },
     });
 
+    // Provide Buffer for browser compatibility
+    config.plugins.push(
+      new webpack.ProvidePlugin({
+        Buffer: ['buffer', 'Buffer'],
+      })
+    );
+
     // Polyfills for browser compatibility
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -61,8 +69,14 @@ const nextConfig: NextConfig = {
         "node_modules/@utxorpc/sdk/lib",
         isServer ? "node/index.mjs" : "browser/index.mjs"
       ),
-      // Redirect libsodium-wrappers-sumo to standard libsodium-wrappers
-      "libsodium-wrappers-sumo": "libsodium-wrappers",
+      "libsodium-wrappers": path.resolve(
+        process.cwd(),
+        "node_modules/libsodium-wrappers-sumo"
+      ),
+      "libsodium-wrappers-sumo": path.resolve(
+        process.cwd(),
+        "node_modules/libsodium-wrappers-sumo"
+      ),
     };
 
     config.ignoreWarnings = [

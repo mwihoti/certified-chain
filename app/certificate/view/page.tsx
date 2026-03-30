@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Download, ExternalLink } from 'lucide-react';
 import Layout from '@/components/layout/Layout';
 import CertificateTemplate from '@/components/certificate/CertificateTemplate';
-import { mockCertificates } from '@/lib/mockData';
+import { getCertificateByUniqueId, getCertificateByCertNumber } from '@/lib/services/api';
 import { useToast } from '@/hooks/use-toast';
 
 function CertificateContent() {
@@ -19,24 +19,26 @@ function CertificateContent() {
   useEffect(() => {
     const id = searchParams.get('id');
     const uniqueId = searchParams.get('uniqueId');
-    
-    if (id) {
-      const cert = mockCertificates.find(c => c.id === id);
-      setCertificate(cert);
-    } else if (uniqueId) {
-      // In a real app, you'd fetch by uniqueId
-      const cert = mockCertificates[0]; // Mock for now
-      setCertificate(cert);
+
+    async function load() {
+      if (uniqueId) {
+        const response = await getCertificateByUniqueId(uniqueId);
+        if (response.success && response.data) setCertificate(response.data);
+      } else if (id) {
+        // id is treated as a certificate number for backward compatibility
+        const response = await getCertificateByCertNumber(id);
+        if (response.success && response.data) setCertificate(response.data);
+      }
+      setLoading(false);
     }
-    
-    setLoading(false);
+
+    load();
   }, [searchParams]);
 
   const handleDownload = () => {
-    // In a real implementation, this would generate a PDF
     toast({
       title: 'PDF Generation',
-      description: 'PDF download feature will be implemented with a PDF generation library in production.',
+      description: 'PDF download will be available in a future update.',
     });
   };
 
@@ -55,9 +57,7 @@ function CertificateContent() {
         <p className="text-muted-foreground mb-6">
           The certificate you're looking for doesn't exist or has been removed.
         </p>
-        <Button onClick={() => router.push('/')}>
-          Return to Home
-        </Button>
+        <Button onClick={() => router.push('/')}>Return to Home</Button>
       </div>
     );
   }
@@ -65,18 +65,19 @@ function CertificateContent() {
   return (
     <div className="container py-8">
       <div className="mb-6 flex justify-between items-center">
-        <Button
-          variant="ghost"
-          onClick={() => router.back()}
-        >
+        <Button variant="ghost" onClick={() => router.back()}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
-        
         <div className="flex gap-3">
           <Button
             variant="outline"
-            onClick={() => window.open(`https://cardanoscan.io/transaction/${certificate.blockchainTxHash}`, '_blank')}
+            onClick={() =>
+              window.open(
+                `https://preview.cardanoscan.io/transaction/${certificate.blockchainTxHash}`,
+                '_blank'
+              )
+            }
           >
             <ExternalLink className="mr-2 h-4 w-4" />
             View on Blockchain
@@ -95,7 +96,7 @@ function CertificateContent() {
         issueDate={certificate.issueDate}
         institutionName={certificate.institutionName}
         transactionHash={certificate.blockchainTxHash}
-        uniqueIdentifier={certificate.certificateNumber}
+        uniqueIdentifier={certificate.uniqueIdentifier}
         certificateNumber={certificate.certificateNumber}
       />
     </div>
@@ -105,11 +106,7 @@ function CertificateContent() {
 export default function ViewCertificate() {
   return (
     <Layout>
-      <Suspense fallback={
-        <div className="container py-12 text-center">
-          <p>Loading certificate...</p>
-        </div>
-      }>
+      <Suspense fallback={<div className="container py-12 text-center"><p>Loading certificate...</p></div>}>
         <CertificateContent />
       </Suspense>
     </Layout>

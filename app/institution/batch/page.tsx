@@ -1,18 +1,15 @@
 "use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Download } from 'lucide-react';
+import {
+  ArrowLeft, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Download,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import Layout from '@/components/layout/Layout';
@@ -30,6 +27,10 @@ import {
   getNextEntryNumber,
   CertificateData,
 } from '@/lib/services/cardano';
+import { saveCertificate } from '@/lib/services/api';
+import { useWallet } from '@meshsdk/react';
+import { CardanoWallet } from '@meshsdk/react';
+import { createClient } from '@/lib/supabase/client';
 
 interface BatchEntry extends ExcelCertificateRow {
   status: 'pending' | 'processing' | 'complete' | 'error';
@@ -40,20 +41,27 @@ interface BatchEntry extends ExcelCertificateRow {
 export default function BatchUpload() {
   const router = useRouter();
   const { toast } = useToast();
+  const { connected, wallet } = useWallet();
   const [step, setStep] = useState<'upload' | 'preview' | 'processing' | 'complete'>('upload');
   const [isDragging, setIsDragging] = useState(false);
   const [entries, setEntries] = useState<BatchEntry[]>([]);
   const [progress, setProgress] = useState(0);
   const [processedCount, setProcessedCount] = useState(0);
+  const [institutionName, setInstitutionName] = useState('');
+  const [institutionId, setInstitutionId] = useState('');
 
-  // Mock CSV data for demo
-  const mockCSVData: BatchEntry[] = [
-    { recipientName: 'John Doe', recipientEmail: 'john@email.com', recipientPosition: 'Graduate', credentialType: 'Bachelor of Science', issueDate: '2024-05-20', status: 'pending' },
-    { recipientName: 'Jane Smith', recipientEmail: 'jane@email.com', recipientPosition: 'Graduate', credentialType: 'Bachelor of Arts', issueDate: '2024-05-20', status: 'pending' },
-    { recipientName: 'Mike Johnson', recipientEmail: 'mike@email.com', recipientPosition: 'Graduate', credentialType: 'Master of Science', issueDate: '2024-05-20', status: 'pending' },
-    { recipientName: 'Sarah Williams', recipientEmail: 'sarah@email.com', recipientPosition: 'Graduate', credentialType: 'Bachelor of Engineering', issueDate: '2024-05-20', status: 'pending' },
-    { recipientName: 'Chris Brown', recipientEmail: 'chris@email.com', recipientPosition: 'Graduate', credentialType: 'Doctor of Philosophy', issueDate: '2024-05-20', status: 'pending' },
-  ];
+  useEffect(() => {
+    async function loadInstitution() {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.user_metadata) {
+        const meta = session.user.user_metadata;
+        setInstitutionName(meta.institution_name || '');
+        setInstitutionId(meta.institution_id || session.user.id);
+      }
+    }
+    loadInstitution();
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -65,94 +73,82 @@ export default function BatchUpload() {
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const files = Array.from(e.dataTransfer.files);
-    const xlsxFile = files.find(f => 
-      f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
-    );
-    
-    if (!xlsxFile) {
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+
+      const files = Array.from(e.dataTransfer.files);
+      const xlsxFile = files.find((f) => f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
+
+      if (!xlsxFile) {
+        toast({ title: 'Invalid File', description: 'Please upload an Excel file (.xlsx or .xls)', variant: 'destructive' });
+        return;
+      }
+
+      try {
+        const parsedData = await parseExcelFile(xlsxFile);
+        setEntries(parsedData.map((entry) => ({ ...entry, status: 'pending' as const })));
+        setStep('preview');
+        toast({ title: 'File Uploaded', description: `${parsedData.length} certificates ready for review.` });
+      } catch (error) {
+        toast({ title: 'Error', description: 'Failed to parse Excel file. Please check the format.', variant: 'destructive' });
+      }
+    },
+    [toast]
+  );
+
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      try {
+        const parsedData = await parseExcelFile(file);
+        setEntries(parsedData.map((entry) => ({ ...entry, status: 'pending' as const })));
+        setStep('preview');
+        toast({ title: 'File Uploaded', description: `${parsedData.length} certificates ready for review.` });
+      } catch (error) {
+        toast({ title: 'Error', description: 'Failed to parse Excel file. Please check the format.', variant: 'destructive' });
+      }
+    },
+    [toast]
+  );
+
+  const processBatch = async () => {
+    if (!connected || !wallet) {
       toast({
-        title: 'Invalid File',
-        description: 'Please upload an Excel file (.xlsx or .xls)',
+        title: 'Wallet Required',
+        description: 'Please connect your Cardano wallet before processing.',
         variant: 'destructive',
       });
       return;
     }
-    
-    try {
-      const parsedData = await parseExcelFile(xlsxFile);
-      setEntries(parsedData.map(entry => ({ ...entry, status: 'pending' as const })));
-      setStep('preview');
+
+    if (!institutionName || !institutionId) {
       toast({
-        title: 'File Uploaded',
-        description: `${parsedData.length} certificates ready for review.`,
-      });
-    } catch (error) {
-      console.error('Error parsing file:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to parse Excel file. Please check the format.',
+        title: 'Institution Not Set',
+        description: 'Institution details are missing. Please ensure you are logged in.',
         variant: 'destructive',
       });
+      return;
     }
-  }, [toast]);
 
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    try {
-      const parsedData = await parseExcelFile(file);
-      setEntries(parsedData.map(entry => ({ ...entry, status: 'pending' as const })));
-      setStep('preview');
-      toast({
-        title: 'File Uploaded',
-        description: `${parsedData.length} certificates ready for review.`,
-      });
-    } catch (error) {
-      console.error('Error parsing file:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to parse Excel file. Please check the format.',
-        variant: 'destructive',
-      });
-    }
-  }, [toast]);
-
-  const processBatch = async () => {
     setStep('processing');
-    
+
     try {
-      // Mock institution data - in production, get from auth session
-      const institutionName = 'Cardano State University';
-      const institutionId = 'inst-001';
-      
       const results = [];
-      
-      // Process each certificate individually to show progress
+
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
-        
-        // Update status to processing
+
         setEntries((prev) =>
-          prev.map((e, index) =>
-            index === i ? { ...e, status: 'processing' as const } : e
-          )
+          prev.map((e, index) => (index === i ? { ...e, status: 'processing' as const } : e))
         );
-        
-        // Generate unique identifier once for this certificate
-        const entryNumber = getNextEntryNumber(institutionId, entry.recipientName);
-        const identifier = generateUniqueIdentifier(
-          institutionName,
-          entry.recipientName,
-          entryNumber
-        );
-        
-        // Create certificate data
+
+        const entryNumber = await getNextEntryNumber(institutionId, entry.recipientName);
+        const identifier = generateUniqueIdentifier(institutionName, entry.recipientName, entryNumber + i);
+
         const certificateData: CertificateData = {
           recipientName: entry.recipientName,
           recipientEmail: entry.recipientEmail,
@@ -163,16 +159,34 @@ export default function BatchUpload() {
           institutionId,
           institutionName,
         };
-        
-        // Submit to blockchain with the generated identifier
+
         const result = await submitCertificateToBlockchain(
           certificateData,
-          identifier.fullIdentifier
+          identifier.fullIdentifier,
+          wallet
         );
-        
+
+        const year = new Date().getFullYear();
+        const certificateNumber = `${institutionName.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase()}-${year}-${String(entryNumber + i).padStart(5, '0')}`;
+
+        await saveCertificate({
+          uniqueIdentifier: identifier.fullIdentifier,
+          certificateNumber,
+          recipientName: entry.recipientName,
+          recipientEmail: entry.recipientEmail,
+          recipientPosition: entry.recipientPosition,
+          credentialType: entry.credentialType,
+          issueDate: entry.issueDate,
+          expiryDate: entry.expiryDate,
+          institutionId,
+          institutionName,
+          blockchainTxHash: result.txHash,
+          blockchainTxIndex: result.txIndex,
+          certificateHash: result.certificateHash,
+        });
+
         results.push(result);
-        
-        // Update status to complete
+
         setEntries((prev) =>
           prev.map((e, index) =>
             index === i
@@ -185,21 +199,21 @@ export default function BatchUpload() {
               : e
           )
         );
-        
+
         setProcessedCount(i + 1);
         setProgress(((i + 1) / entries.length) * 100);
       }
-      
+
       setStep('complete');
       toast({
         title: 'Batch Processing Complete',
         description: `Successfully issued ${entries.length} certificates on the blockchain.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error processing batch:', error);
       toast({
         title: 'Error',
-        description: 'Failed to process batch. Please try again.',
+        description: error?.message || 'Failed to process batch. Please try again.',
         variant: 'destructive',
       });
       setStep('preview');
@@ -207,8 +221,7 @@ export default function BatchUpload() {
   };
 
   const downloadResults = () => {
-    // Prepare data for Excel
-    const certificateRows: ExcelCertificateRow[] = entries.map(entry => ({
+    const certificateRows: ExcelCertificateRow[] = entries.map((entry) => ({
       recipientName: entry.recipientName,
       recipientEmail: entry.recipientEmail,
       recipientPosition: entry.recipientPosition,
@@ -216,47 +229,35 @@ export default function BatchUpload() {
       issueDate: entry.issueDate,
       expiryDate: entry.expiryDate,
     }));
-    
-    const blockchainResults = entries.map(entry => ({
+
+    const blockchainResults = entries.map((entry) => ({
       txHash: entry.transactionHash || '',
       uniqueIdentifier: entry.uniqueIdentifier || '',
       certificateHash: '',
       timestamp: Date.now(),
     }));
-    
+
     const excelData = updateExcelWithBlockchainData(certificateRows, blockchainResults);
     const timestamp = new Date().toISOString().split('T')[0];
     downloadExcelFile(excelData, `litecert_certificates_${timestamp}.xlsx`);
-    
-    toast({
-      title: 'Download Started',
-      description: 'Your certificate file with blockchain data is being downloaded.',
-    });
+
+    toast({ title: 'Download Started', description: 'Certificate file with blockchain data is downloading.' });
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'pending':
-        return <Badge variant="outline">Pending</Badge>;
-      case 'processing':
-        return <Badge variant="secondary">Processing</Badge>;
-      case 'complete':
-        return <Badge className="bg-success text-success-foreground">Complete</Badge>;
-      case 'error':
-        return <Badge variant="destructive">Error</Badge>;
-      default:
-        return null;
+      case 'pending': return <Badge variant="outline">Pending</Badge>;
+      case 'processing': return <Badge variant="secondary">Processing</Badge>;
+      case 'complete': return <Badge className="bg-success text-success-foreground">Complete</Badge>;
+      case 'error': return <Badge variant="destructive">Error</Badge>;
+      default: return null;
     }
   };
 
   return (
     <Layout>
       <div className="container py-8 max-w-4xl">
-        <Button
-          variant="ghost"
-          onClick={() => router.push('/institution/dashboard')}
-          className="mb-6"
-        >
+        <Button variant="ghost" onClick={() => router.push('/institution/dashboard')} className="mb-6">
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Dashboard
         </Button>
@@ -265,18 +266,34 @@ export default function BatchUpload() {
           <Card>
             <CardHeader>
               <CardTitle>Batch Upload Certificates</CardTitle>
-              <CardDescription>
-                Upload an Excel file to issue multiple certificates at once.
-              </CardDescription>
+              <CardDescription>Upload an Excel file to issue multiple certificates at once.</CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Wallet connection */}
+              <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 mb-6">
+                <div className="flex items-center gap-2 text-sm">
+                  {connected ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-success" />
+                      <span className="text-success font-medium">Wallet connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 text-warning" />
+                      <span className="text-muted-foreground">Connect wallet to process</span>
+                    </>
+                  )}
+                </div>
+                <CardanoWallet />
+              </div>
+
               <div className="mb-6 flex justify-end">
                 <Button variant="outline" onClick={downloadTemplate}>
                   <Download className="mr-2 h-4 w-4" />
                   Download Template
                 </Button>
               </div>
-              
+
               <div
                 className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
                   isDragging ? 'border-primary bg-primary/5' : 'border-border'
@@ -303,15 +320,9 @@ export default function BatchUpload() {
 
               <div className="mt-6 p-4 bg-muted rounded-lg">
                 <h4 className="font-medium mb-2">Excel Format Requirements</h4>
-                <p className="text-sm text-muted-foreground mb-2">
-                  Your Excel file should include the following columns:
-                </p>
                 <code className="text-xs bg-background p-2 rounded block">
                   recipientName, recipientEmail, recipientPosition, credentialType, issueDate, expiryDate (optional)
                 </code>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Download the template above to get started with the correct format.
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -321,9 +332,7 @@ export default function BatchUpload() {
           <Card>
             <CardHeader>
               <CardTitle>Preview Certificates</CardTitle>
-              <CardDescription>
-                Review the certificates before issuing them on the blockchain.
-              </CardDescription>
+              <CardDescription>Review the certificates before issuing them on the blockchain.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto mb-6">
@@ -357,13 +366,16 @@ export default function BatchUpload() {
               </div>
 
               <div className="flex gap-3">
-                <Button onClick={processBatch}>
+                <Button onClick={processBatch} disabled={!connected}>
                   Issue {entries.length} Certificates
                 </Button>
                 <Button variant="outline" onClick={() => setStep('upload')}>
                   Upload Different File
                 </Button>
               </div>
+              {!connected && (
+                <p className="text-xs text-warning mt-2">Connect your wallet above before processing.</p>
+              )}
             </CardContent>
           </Card>
         )}
@@ -372,9 +384,7 @@ export default function BatchUpload() {
           <Card>
             <CardHeader>
               <CardTitle>Processing Batch</CardTitle>
-              <CardDescription>
-                Issuing certificates on the Cardano blockchain...
-              </CardDescription>
+              <CardDescription>Issuing certificates on the Cardano blockchain...</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-6">
@@ -444,12 +454,15 @@ export default function BatchUpload() {
                     <Download className="mr-2 h-4 w-4" />
                     Download Results
                   </Button>
-                  <Button variant="outline" onClick={() => {
-                    setStep('upload');
-                    setEntries([]);
-                    setProgress(0);
-                    setProcessedCount(0);
-                  }}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setStep('upload');
+                      setEntries([]);
+                      setProgress(0);
+                      setProcessedCount(0);
+                    }}
+                  >
                     Upload Another Batch
                   </Button>
                   <Button variant="outline" onClick={() => router.push('/institution/dashboard')}>
@@ -463,4 +476,4 @@ export default function BatchUpload() {
       </div>
     </Layout>
   );
-};
+}

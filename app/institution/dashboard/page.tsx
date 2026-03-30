@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   FileText,
   Upload,
-  BarChart3,
   Clock,
   CheckCircle,
   XCircle,
@@ -36,15 +35,57 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import Layout from '@/components/layout/Layout';
-import { mockCertificates, mockInstitutions } from '@/lib/mockData';
+import { getAllCertificates, revokeCertificate, CertificateRecord } from '@/lib/services/api';
+import { revokeOnChain } from '@/lib/services/contract';
+import { isContractDeployed } from '@/lib/contracts/registry';
+import { createClient } from '@/lib/supabase/client';
+import { useWallet } from '@meshsdk/react';
+import { CardanoWallet } from '@meshsdk/react';
+import { useToast } from '@/hooks/use-toast';
 
 export default function InstitutionDashboard() {
   const router = useRouter();
+  const { toast } = useToast();
+  const { connected, wallet } = useWallet();
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // Use first institution as the "logged in" institution
-  const institution = mockInstitutions[0];
-  const certificates = mockCertificates.filter((cert) => cert.institutionId === institution.id);
+  const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [institutionName, setInstitutionName] = useState('Institution Dashboard');
+  const [institutionId, setInstitutionId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+
+      let instId: string | null = null;
+
+      if (session?.user) {
+        const meta = session.user.user_metadata;
+        if (meta?.institution_name) setInstitutionName(meta.institution_name);
+        if (meta?.institution_id) instId = meta.institution_id;
+        setInstitutionId(instId);
+      }
+
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
+      const url = instId
+        ? `${apiBase}/certificates?institutionId=${encodeURIComponent(instId)}`
+        : `${apiBase}/certificates`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.success) setCertificates(data.data || []);
+      } catch (err) {
+        console.error('Failed to load certificates:', err);
+      }
+
+      setLoading(false);
+    }
+
+    loadData();
+  }, []);
 
   const filteredCertificates = certificates.filter(
     (cert) =>
@@ -63,6 +104,49 @@ export default function InstitutionDashboard() {
     }).length,
   };
 
+  const handleRevoke = async (cert: CertificateRecord) => {
+    setRevoking(cert.uniqueIdentifier);
+
+    try {
+      let revokeTxHash: string | undefined;
+
+      // Step 1: Revoke on-chain if contract is deployed and wallet is connected
+      if (isContractDeployed() && connected && wallet) {
+        try {
+          revokeTxHash = await revokeOnChain(
+            wallet,
+            cert.blockchainTxHash,
+            cert.blockchainTxIndex
+          );
+          toast({ title: 'On-chain revocation submitted', description: `TX: ${revokeTxHash.slice(0, 16)}...` });
+        } catch (chainErr: any) {
+          toast({
+            title: 'On-chain revocation failed',
+            description: chainErr?.message || 'Could not submit revocation to blockchain.',
+            variant: 'destructive',
+          });
+          setRevoking(null);
+          return;
+        }
+      }
+
+      // Step 2: Update database
+      const result = await revokeCertificate(cert.uniqueIdentifier, revokeTxHash);
+      if (result.success) {
+        setCertificates((prev) =>
+          prev.map((c) =>
+            c.uniqueIdentifier === cert.uniqueIdentifier ? { ...c, status: 'revoked' } : c
+          )
+        );
+        toast({ title: 'Certificate Revoked', description: 'The certificate has been revoked.' });
+      } else {
+        toast({ title: 'DB Error', description: 'On-chain done but DB update failed.', variant: 'destructive' });
+      }
+    } finally {
+      setRevoking(null);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'valid':
@@ -76,16 +160,21 @@ export default function InstitutionDashboard() {
     }
   };
 
+  const networkScanBase =
+    process.env.NEXT_PUBLIC_CARDANO_NETWORK === 'mainnet'
+      ? 'https://cardanoscan.io/transaction'
+      : 'https://preview.cardanoscan.io/transaction';
+
   return (
     <Layout>
       <div className="container py-8">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold">{institution.name}</h1>
+            <h1 className="text-3xl font-bold">{institutionName}</h1>
             <p className="text-muted-foreground">Certificate Management Dashboard</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap items-center">
+            <CardanoWallet />
             <Link href="/institution/issue">
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
@@ -101,7 +190,6 @@ export default function InstitutionDashboard() {
           </div>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
@@ -110,7 +198,7 @@ export default function InstitutionDashboard() {
                   <FileText className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-2xl font-bold">{loading ? '—' : stats.total}</p>
                   <p className="text-sm text-muted-foreground">Total Issued</p>
                 </div>
               </div>
@@ -123,7 +211,7 @@ export default function InstitutionDashboard() {
                   <CheckCircle className="h-6 w-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.valid}</p>
+                  <p className="text-2xl font-bold">{loading ? '—' : stats.valid}</p>
                   <p className="text-sm text-muted-foreground">Valid</p>
                 </div>
               </div>
@@ -136,7 +224,7 @@ export default function InstitutionDashboard() {
                   <XCircle className="h-6 w-6 text-destructive" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.revoked}</p>
+                  <p className="text-2xl font-bold">{loading ? '—' : stats.revoked}</p>
                   <p className="text-sm text-muted-foreground">Revoked</p>
                 </div>
               </div>
@@ -149,7 +237,7 @@ export default function InstitutionDashboard() {
                   <Clock className="h-6 w-6 text-info" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.thisMonth}</p>
+                  <p className="text-2xl font-bold">{loading ? '—' : stats.thisMonth}</p>
                   <p className="text-sm text-muted-foreground">This Month</p>
                 </div>
               </div>
@@ -157,7 +245,6 @@ export default function InstitutionDashboard() {
           </Card>
         </div>
 
-        {/* Certificate Table */}
         <Card>
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -177,77 +264,89 @@ export default function InstitutionDashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Certificate #</TableHead>
-                    <TableHead>Recipient</TableHead>
-                    <TableHead>Credential</TableHead>
-                    <TableHead>Issue Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Blockchain</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredCertificates.map((cert) => (
-                    <TableRow key={cert.id}>
-                      <TableCell className="font-mono text-sm">{cert.certificateNumber}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{cert.recipientName}</p>
-                          <p className="text-sm text-muted-foreground">{cert.recipientPosition}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">{cert.credentialType}</TableCell>
-                      <TableCell>{new Date(cert.issueDate).toLocaleDateString()}</TableCell>
-                      <TableCell>{getStatusBadge(cert.status)}</TableCell>
-                      <TableCell>
-                        {cert.blockchainTxHash ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => window.open(`https://cardanoscan.io/transaction/${cert.blockchainTxHash}`, '_blank')}
-                          >
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            View TX
-                          </Button>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => router.push(`/certificate/view?id=${cert.id}`)}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </DropdownMenuItem>
-                            {cert.status === 'valid' && (
-                              <DropdownMenuItem className="text-destructive">
-                                <Ban className="mr-2 h-4 w-4" />
-                                Revoke
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading certificates...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Certificate #</TableHead>
+                      <TableHead>Recipient</TableHead>
+                      <TableHead>Credential</TableHead>
+                      <TableHead>Issue Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Blockchain</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {filteredCertificates.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No certificates found matching your search.
+                  </TableHeader>
+                  <TableBody>
+                    {filteredCertificates.map((cert) => (
+                      <TableRow key={cert.id}>
+                        <TableCell className="font-mono text-sm">{cert.certificateNumber}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{cert.recipientName}</p>
+                            <p className="text-sm text-muted-foreground">{cert.recipientPosition}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate">{cert.credentialType}</TableCell>
+                        <TableCell>{new Date(cert.issueDate).toLocaleDateString()}</TableCell>
+                        <TableCell>{getStatusBadge(cert.status)}</TableCell>
+                        <TableCell>
+                          {cert.blockchainTxHash ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                window.open(`${networkScanBase}/${cert.blockchainTxHash}`, '_blank')
+                              }
+                            >
+                              <ExternalLink className="h-4 w-4 mr-1" />
+                              View TX
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(`/certificate/view?uniqueId=${cert.uniqueIdentifier}`)
+                                }
+                              >
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                              </DropdownMenuItem>
+                              {cert.status === 'valid' && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  disabled={revoking === cert.uniqueIdentifier}
+                                  onClick={() => handleRevoke(cert)}
+                                >
+                                  <Ban className="mr-2 h-4 w-4" />
+                                  {revoking === cert.uniqueIdentifier ? 'Revoking...' : 'Revoke'}
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {filteredCertificates.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No certificates found.
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -255,4 +354,4 @@ export default function InstitutionDashboard() {
       </div>
     </Layout>
   );
-};
+}
