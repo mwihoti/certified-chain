@@ -232,6 +232,7 @@ export default function BatchUpload() {
 
     const blockchainResults = entries.map((entry) => ({
       txHash: entry.transactionHash || '',
+      txIndex: 0,
       uniqueIdentifier: entry.uniqueIdentifier || '',
       certificateHash: '',
       timestamp: Date.now(),

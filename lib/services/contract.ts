@@ -110,7 +110,7 @@ export async function revokeOnChain(
   const provider = new BlockfrostProvider(blockfrostKey);
 
   const utxos: UTxO[] = await provider.fetchUTxOs(txHash);
-  const contractUtxo = utxos.find((u) => u.input.txIndex === txIndex);
+  const contractUtxo = utxos.find((u) => u.input.outputIndex === txIndex);
 
   if (!contractUtxo) {
     throw new Error(`UTxO not found at ${txHash}#${txIndex}. It may have already been spent.`);
@@ -128,7 +128,7 @@ export async function revokeOnChain(
       datum: 'inline',
       redeemer,
     })
-    .requiredSignerHash(institutionPkh);
+    .setRequiredSigners([institutionPkh]);
 
   const unsignedTx = await tx.build();
   const signedTx = await wallet.signTx(unsignedTx, true);
