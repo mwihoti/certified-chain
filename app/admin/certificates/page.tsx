@@ -173,19 +173,20 @@ export default function CertificatesPage() {
 
             const shortHash = tx.tx_hash.substring(0, 8);
 
-            if (!txInfo || !txInfo.metadata) {
+            const txInfoAny = txInfo as any;
+            if (!txInfoAny || !txInfoAny.metadata) {
               console.log(`[${shortHash}] No metadata property found on txInfo`);
               continue;
             }
 
-            const labels = Object.keys(txInfo.metadata);
+            const labels = Object.keys(txInfoAny.metadata);
             console.log(`[${shortHash}] 📊 Labels found:`, labels);
 
             let metadata721: any = null;
 
             // Search all labels for 721 metadata, handling potential stringified JSON
             for (const label of labels) {
-              let labelData = txInfo.metadata[label];
+              let labelData = txInfoAny.metadata[label];
 
               if (typeof labelData === 'string' && (labelData.trim().startsWith('{') || labelData.trim().startsWith('['))) {
                 try { labelData = JSON.parse(labelData); console.log(`[${shortHash}]   - Parsed JSON in label ${label}`); } catch (e) { }

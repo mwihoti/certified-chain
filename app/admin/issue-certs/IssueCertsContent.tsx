@@ -6,7 +6,7 @@ import { useWallet } from '@meshsdk/react';
 import { CardanoWallet } from '@meshsdk/react';
 import { Transaction, ForgeScript } from '@meshsdk/core';
 import { BlockfrostProvider,  } from '@meshsdk/core';
-import { Mint, Policy, TxOutputBuilder } from '@meshsdk/core';
+import { Mint } from '@meshsdk/core';
 import * as XLSX from 'xlsx';
 import {
   ArrowLeft,
@@ -169,7 +169,7 @@ export default function IssueCertsContent() {
 
     try {
       // simple time-lock minting policy
-      const mintingPolicy: Policy = {
+      const mintingPolicy: any = {
         type: 'all',
         scripts: [
           {
@@ -178,12 +178,12 @@ export default function IssueCertsContent() {
           },
           {
             type: 'before',
-            slot: (await blockfrostProvider.fetchProtocolParameters()).slot + 1000000,
+            slot: ((await blockfrostProvider.fetchProtocolParameters()) as any).slot + 1000000,
           },
         ],
       };
 
-      const ForgeScript: ForgeScript = {
+      const forgeScript: any = {
         type: 'mintingPolicy',
         Policy: mintingPolicy,
       };
