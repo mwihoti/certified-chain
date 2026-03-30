@@ -84,6 +84,18 @@ const nextConfig: NextConfig = {
       { module: /node_modules\/@cardano-sdk/ },
     ];
 
+    // Midnight SDK is not yet published — mark as external so webpack skips bundling.
+    // The dynamic import in midnight.ts catches the missing module at runtime.
+    config.externals = [
+      ...(Array.isArray(config.externals) ? config.externals : config.externals ? [config.externals] : []),
+      ({ request }: { request?: string }, callback: (err?: Error | null, result?: string) => void) => {
+        if (request && request.startsWith('@midnight-ntwrk/')) {
+          return callback(null, `commonjs ${request}`);
+        }
+        callback();
+      },
+    ];
+
     return config;
   },
 };
