@@ -7,10 +7,10 @@
  *  Verify  → fetch UTxO from Blockfrost, decode datum, compare hash
  */
 
-import { mConStr0, mConStr1, resolvePlutusScriptAddress } from '@meshsdk/core';
-import type { UTxO } from '@meshsdk/core';
 import { certificateRegistryScript, isContractDeployed } from '@/lib/contracts/registry';
 import { getContractAddress, CONTRACT_MIN_LOVELACE, LITECERT_METADATA_LABEL } from '@/lib/contracts/config';
+import { buildLiteCertMetadata } from '@/lib/contracts/metadata';
+import type { CertificateData } from '@/lib/domain/certificates';
 
 // Inlined to avoid circular dependency with cardano.ts
 function getNetwork(): 'preview' | 'preprod' | 'mainnet' {
@@ -34,11 +34,13 @@ function blockfrostHeaders() {
 }
 
 // Build the Plutus inline datum for a certificate
-function buildCertificateDatum(
+async function buildCertificateDatum(
   institutionPkh: string,
   certificateHash: string,
   uniqueIdentifier: string
 ) {
+  const { mConStr0, mConStr1 } = await import('@meshsdk/core');
+
   return mConStr0([
     institutionPkh,
     certificateHash,
@@ -53,7 +55,7 @@ export async function issueOnChain(
   wallet: any,
   certificateHash: string,
   uniqueIdentifier: string,
-  institutionName: string
+  certificateData: CertificateData
 ): Promise<{ txHash: string; txIndex: number }> {
   if (!isContractDeployed()) {
     throw new Error(
@@ -70,22 +72,21 @@ export async function issueOnChain(
   if (!usedAddresses.length) throw new Error('No wallet addresses found.');
 
   const institutionPkh = resolvePaymentKeyHash(usedAddresses[0]);
-  const datum = buildCertificateDatum(institutionPkh, certificateHash, uniqueIdentifier);
+  const datum = await buildCertificateDatum(institutionPkh, certificateHash, uniqueIdentifier);
 
   const tx = new Transaction({ initiator: wallet })
     .sendLovelace(
       { address: contractAddress, datum: { value: datum, inline: true } },
       CONTRACT_MIN_LOVELACE
     )
-    .setMetadata(LITECERT_METADATA_LABEL, {
-      msg: [
-        'LiteCert Certificate',
-        `ID: ${uniqueIdentifier}`,
-        `Hash: ${certificateHash}`,
-        `Issuer: ${institutionName}`,
-        `Timestamp: ${new Date().toISOString()}`,
-      ],
-    });
+    .setMetadata(
+      LITECERT_METADATA_LABEL,
+      buildLiteCertMetadata({
+        certificateData,
+        certificateHash,
+        uniqueIdentifier,
+      })
+    );
 
   const unsignedTx = await tx.build();
   const signedTx = await wallet.signTx(unsignedTx);
@@ -104,12 +105,12 @@ export async function revokeOnChain(
     throw new Error('Contract not deployed.');
   }
 
-  const { Transaction, BlockfrostProvider, resolvePaymentKeyHash } = await import('@meshsdk/core');
+  const { Transaction, BlockfrostProvider, mConStr0, resolvePaymentKeyHash } = await import('@meshsdk/core');
 
   const blockfrostKey = process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID!;
   const provider = new BlockfrostProvider(blockfrostKey);
 
-  const utxos: UTxO[] = await provider.fetchUTxOs(txHash);
+  const utxos = await provider.fetchUTxOs(txHash);
   const contractUtxo = utxos.find((u) => u.input.outputIndex === txIndex);
 
   if (!contractUtxo) {
@@ -195,10 +196,5 @@ export async function verifyOnChain(
 // Get the contract address for the current network
 export function getRegistryAddress(): string {
   const network = getNetwork();
-
-  if (isContractDeployed()) {
-    return resolvePlutusScriptAddress(certificateRegistryScript, networkId());
-  }
-
   return getContractAddress(network);
 }

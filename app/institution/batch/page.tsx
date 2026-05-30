@@ -22,15 +22,12 @@ import {
   ExcelCertificateRow,
 } from '@/lib/services/excel';
 import {
-  generateUniqueIdentifier,
   submitCertificateToBlockchain,
-  getNextEntryNumber,
   CertificateData,
 } from '@/lib/services/cardano';
-import { saveCertificate } from '@/lib/services/api';
-import { useWallet } from '@meshsdk/react';
-import { CardanoWallet } from '@meshsdk/react';
-import { createClient } from '@/lib/supabase/client';
+import { createIssuanceJob, finalizeIssuanceJob } from '@/lib/services/api';
+import { getCurrentSessionUser } from '@/lib/services/session';
+import CardanoWalletPanel, { type WalletConnectionState } from '@/components/wallet/CardanoWalletPanel';
 
 interface BatchEntry extends ExcelCertificateRow {
   status: 'pending' | 'processing' | 'complete' | 'error';
@@ -41,7 +38,10 @@ interface BatchEntry extends ExcelCertificateRow {
 export default function BatchUpload() {
   const router = useRouter();
   const { toast } = useToast();
-  const { connected, wallet } = useWallet();
+  const [{ connected, wallet }, setWalletConnection] = useState<WalletConnectionState>({
+    connected: false,
+    wallet: null,
+  });
   const [step, setStep] = useState<'upload' | 'preview' | 'processing' | 'complete'>('upload');
   const [isDragging, setIsDragging] = useState(false);
   const [entries, setEntries] = useState<BatchEntry[]>([]);
@@ -52,15 +52,17 @@ export default function BatchUpload() {
 
   useEffect(() => {
     async function loadInstitution() {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.user_metadata) {
-        const meta = session.user.user_metadata;
-        setInstitutionName(meta.institution_name || '');
-        setInstitutionId(meta.institution_id || session.user.id);
+      const user = await getCurrentSessionUser();
+      if (user) {
+        setInstitutionName(user.institution_name || '');
+        setInstitutionId(user.institution_id || user.id);
       }
     }
     loadInstitution();
+  }, []);
+
+  const handleWalletChange = useCallback((connection: WalletConnectionState) => {
+    setWalletConnection(connection);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -137,8 +139,6 @@ export default function BatchUpload() {
     setStep('processing');
 
     try {
-      const results = [];
-
       for (let i = 0; i < entries.length; i++) {
         const entry = entries[i];
 
@@ -146,8 +146,18 @@ export default function BatchUpload() {
           prev.map((e, index) => (index === i ? { ...e, status: 'processing' as const } : e))
         );
 
-        const entryNumber = await getNextEntryNumber(institutionId, entry.recipientName);
-        const identifier = generateUniqueIdentifier(institutionName, entry.recipientName, entryNumber + i);
+        const issuanceJob = await createIssuanceJob({
+          recipientName: entry.recipientName,
+          recipientEmail: entry.recipientEmail,
+          recipientPosition: entry.recipientPosition,
+          credentialType: entry.credentialType,
+          issueDate: entry.issueDate,
+          expiryDate: entry.expiryDate,
+        });
+
+        if (!issuanceJob.success || !issuanceJob.data) {
+          throw new Error(issuanceJob.error || `Failed to create issuance job for ${entry.recipientName}`);
+        }
 
         const certificateData: CertificateData = {
           recipientName: entry.recipientName,
@@ -162,30 +172,23 @@ export default function BatchUpload() {
 
         const result = await submitCertificateToBlockchain(
           certificateData,
-          identifier.fullIdentifier,
+          issuanceJob.data.uniqueIdentifier,
           wallet
         );
 
-        const year = new Date().getFullYear();
-        const certificateNumber = `${institutionName.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase()}-${year}-${String(entryNumber + i).padStart(5, '0')}`;
-
-        await saveCertificate({
-          uniqueIdentifier: identifier.fullIdentifier,
-          certificateNumber,
-          recipientName: entry.recipientName,
-          recipientEmail: entry.recipientEmail,
-          recipientPosition: entry.recipientPosition,
-          credentialType: entry.credentialType,
-          issueDate: entry.issueDate,
-          expiryDate: entry.expiryDate,
-          institutionId,
-          institutionName,
-          blockchainTxHash: result.txHash,
-          blockchainTxIndex: result.txIndex,
+        const finalizeResult = await finalizeIssuanceJob(issuanceJob.data.id, {
+          txHash: result.txHash,
+          txIndex: result.txIndex,
           certificateHash: result.certificateHash,
+          uniqueIdentifier: issuanceJob.data.uniqueIdentifier,
         });
 
-        results.push(result);
+        if (!finalizeResult.success) {
+          throw new Error(
+            finalizeResult.error ||
+            `Blockchain submission succeeded, but persistence failed for ${entry.recipientName}`
+          );
+        }
 
         setEntries((prev) =>
           prev.map((e, index) =>
@@ -193,7 +196,7 @@ export default function BatchUpload() {
               ? {
                   ...e,
                   status: 'complete' as const,
-                  uniqueIdentifier: result.uniqueIdentifier,
+                  uniqueIdentifier: issuanceJob.data!.uniqueIdentifier,
                   transactionHash: result.txHash,
                 }
               : e
@@ -285,7 +288,7 @@ export default function BatchUpload() {
                     </>
                   )}
                 </div>
-                <CardanoWallet />
+                <CardanoWalletPanel onChange={handleWalletChange} />
               </div>
 
               <div className="mb-6 flex justify-end">

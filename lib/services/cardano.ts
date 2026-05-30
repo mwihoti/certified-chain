@@ -1,8 +1,38 @@
-import CryptoJS from 'crypto-js';
 import { isContractDeployed } from '@/lib/contracts/registry';
+import { LITECERT_METADATA_LABEL } from '@/lib/contracts/config';
+import { buildLiteCertMetadata } from '@/lib/contracts/metadata';
 import { issueOnChain } from '@/lib/services/contract';
+import {
+  generateUniqueIdentifier,
+  hashCertificateData,
+  type CertificateData,
+  type UniqueIdentifier,
+} from '@/lib/domain/certificates';
+import {
+  buildCertificateIssuerCopyAssetName,
+  buildCertificateIssuerCopyMintMetadata,
+  buildCertificateNftAssetName,
+  buildCertificateNftImageData,
+  buildCertificateNftMintMetadata,
+  buildCertificateNftSvg,
+} from '@/lib/domain/certificate-nft';
+export type { CertificateData, UniqueIdentifier } from '@/lib/domain/certificates';
 
-export interface CertificateData {
+interface SubmitCertificateOptions {
+  certificateNumber?: string;
+}
+
+interface CertificateNftMintInput {
+  certificateData: CertificateData;
+  uniqueIdentifier: string;
+  certificateHash: string;
+  certificateNumber?: string;
+  blockchainTxHash?: string;
+}
+
+export interface ExistingCertificateNftInput {
+  uniqueIdentifier: string;
+  certificateNumber: string;
   recipientName: string;
   recipientEmail: string;
   recipientPosition: string;
@@ -11,13 +41,20 @@ export interface CertificateData {
   expiryDate?: string;
   institutionId: string;
   institutionName: string;
+  blockchainTxHash: string;
+  certificateHash: string;
 }
 
-export interface UniqueIdentifier {
-  orgCode: string;
-  userCode: string;
-  entryNumber: string;
-  fullIdentifier: string;
+export interface CertificateNftTransferResult {
+  txHash: string;
+  assetName: string;
+  assetUnit: string;
+  recipientAddress: string;
+  issuerCopy: {
+    assetName: string;
+    assetUnit?: string;
+    minted: boolean;
+  };
 }
 
 export interface BlockchainResult {
@@ -26,54 +63,306 @@ export interface BlockchainResult {
   uniqueIdentifier: string;
   certificateHash: string;
   timestamp: number;
+  nftAsset?: {
+    assetName: string;
+    image: string;
+    policyId?: string;
+    unit?: string;
+  };
+}
+export { generateUniqueIdentifier, hashCertificateData };
+
+function stringToHex(value: string): string {
+  return Array.from(new TextEncoder().encode(value))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
-// Generate unique certificate identifier: ORG_USR_NN
-export function generateUniqueIdentifier(
-  organizationName: string,
-  userName: string,
-  entryNumber: number
-): UniqueIdentifier {
-  const orgCode = organizationName
-    .replace(/[^a-zA-Z]/g, '')
-    .substring(0, 3)
-    .toUpperCase();
+async function uploadNftImageToIpfs(
+  certificateData: CertificateData,
+  uniqueIdentifier: string,
+  certificateHash: string,
+  certificateNumber?: string,
+  blockchainTxHash?: string
+): Promise<string> {
+  let lastError = 'Could not pin NFT image to IPFS.';
 
-  const nameParts = userName.trim().split(/\s+/);
-  let userCode: string;
+  try {
+    const response = await fetch(`/api/certificates/${encodeURIComponent(uniqueIdentifier)}/pin-nft-image`, {
+      method: 'POST',
+    });
 
-  if (nameParts.length >= 2) {
-    userCode = nameParts
-      .map((part) => part.charAt(0))
-      .join('')
-      .substring(0, 3)
-      .toUpperCase();
-  } else {
-    userCode = userName
-      .replace(/[^a-zA-Z]/g, '')
-      .substring(0, 3)
-      .toUpperCase();
+    if (response.ok) {
+      const data = await response.json();
+      if (data.image) return data.image;
+    }
+
+    const error = await response.json().catch(() => null);
+    lastError = error?.error || response.statusText || lastError;
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error);
+    console.warn('[LiteCert] Certificate NFT image pin endpoint failed; trying direct image upload.', error);
   }
 
-  const entryStr = entryNumber.toString().padStart(2, '0');
-  const fullIdentifier = `${orgCode}_${userCode}_${entryStr}`;
+  try {
+    const imageData = buildCertificateNftImageData({
+      certificateData,
+      uniqueIdentifier,
+      certificateHash,
+      certificateNumber,
+      blockchainTxHash,
+    });
+    const svg = buildCertificateNftSvg(imageData);
+    const file = new File([svg], `${buildCertificateNftAssetName(uniqueIdentifier)}.svg`, {
+      type: 'image/svg+xml',
+    });
+    const formData = new FormData();
+    formData.append('file', file);
 
-  return { orgCode, userCode, entryNumber: entryStr, fullIdentifier };
+    const response = await fetch('/api/uploadToPinata', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      lastError = error?.error || response.statusText || lastError;
+      throw new Error(lastError);
+    }
+
+    const data = await response.json();
+    if (data.imgHash) return `ipfs://${data.imgHash}`;
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error);
+    console.warn('[LiteCert] Could not prepare NFT image for IPFS.', error);
+  }
+
+  throw new Error(
+    `Certificate image must be pinned to IPFS before minting. Pinata upload failed: ${lastError}`
+  );
 }
 
-// Hash certificate data for privacy — this hash goes on-chain
-export function hashCertificateData(data: CertificateData): string {
-  const dataString = JSON.stringify({
-    recipientName: data.recipientName,
-    recipientEmail: data.recipientEmail,
-    recipientPosition: data.recipientPosition,
-    credentialType: data.credentialType,
-    issueDate: data.issueDate,
-    expiryDate: data.expiryDate,
-    institutionId: data.institutionId,
-  });
+async function mintCertificateNft(
+  {
+    certificateData,
+    uniqueIdentifier,
+    certificateHash,
+    certificateNumber,
+    blockchainTxHash,
+  }: CertificateNftMintInput,
+  wallet: any
+): Promise<BlockchainResult> {
+  const { ForgeScript, Transaction, resolveScriptHash } = await import('@meshsdk/core');
+  const usedAddresses: string[] = await wallet.getUsedAddresses();
+  const recipient = usedAddresses?.[0];
 
-  return CryptoJS.SHA256(dataString).toString();
+  if (!recipient) {
+    throw new Error('No wallet address found. Please reconnect your wallet and try again.');
+  }
+
+  const forgeScript = ForgeScript.withOneSignature(recipient);
+  const assetName = buildCertificateNftAssetName(uniqueIdentifier);
+  const imageUrl = await uploadNftImageToIpfs(
+    certificateData,
+    uniqueIdentifier,
+    certificateHash,
+    certificateNumber,
+    blockchainTxHash
+  );
+  const nftImageData = buildCertificateNftImageData({
+    certificateData,
+    uniqueIdentifier,
+    certificateHash,
+    certificateNumber,
+    blockchainTxHash,
+  });
+  const nftMetadata = buildCertificateNftMintMetadata(nftImageData, imageUrl);
+  const policyId = resolveScriptHash(forgeScript);
+  const assetNameHex = stringToHex(assetName);
+
+  const tx = new Transaction({ initiator: wallet })
+    .mintAsset(forgeScript, {
+      assetName,
+      assetQuantity: '1',
+      recipient,
+      metadata: nftMetadata,
+      label: '721',
+    })
+    .setMetadata(
+      LITECERT_METADATA_LABEL,
+      buildLiteCertMetadata({
+        certificateData,
+        certificateHash,
+        uniqueIdentifier,
+      })
+    );
+
+  const unsignedTx = await tx.build();
+  const signedTx = await wallet.signTx(unsignedTx);
+  const txHash = await wallet.submitTx(signedTx);
+
+  return {
+    txHash,
+    txIndex: 0,
+    uniqueIdentifier,
+    certificateHash,
+    timestamp: Date.now(),
+    nftAsset: {
+      assetName,
+      image: imageUrl,
+      policyId,
+      unit: `${policyId}${assetNameHex}`,
+    },
+  };
+}
+
+export async function mintExistingCertificateNftToWallet(
+  certificate: ExistingCertificateNftInput,
+  wallet?: any
+): Promise<BlockchainResult> {
+  if (!wallet || typeof window === 'undefined') {
+    throw new Error('A connected wallet is required to mint the certificate NFT.');
+  }
+
+  return mintCertificateNft(
+    {
+      certificateData: {
+        recipientName: certificate.recipientName,
+        recipientEmail: certificate.recipientEmail,
+        recipientPosition: certificate.recipientPosition,
+        credentialType: certificate.credentialType,
+        issueDate: certificate.issueDate,
+        expiryDate: certificate.expiryDate,
+        institutionId: certificate.institutionId,
+        institutionName: certificate.institutionName,
+      },
+      uniqueIdentifier: certificate.uniqueIdentifier,
+      certificateHash: certificate.certificateHash,
+      certificateNumber: certificate.certificateNumber,
+      blockchainTxHash: certificate.blockchainTxHash,
+    },
+    wallet
+  );
+}
+
+function getUtxoAssets(utxo: any): Array<{ unit: string; quantity: string }> {
+  return utxo?.output?.amount ?? utxo?.amount ?? [];
+}
+
+export async function transferCertificateNftToWallet(
+  certificate: ExistingCertificateNftInput,
+  recipientAddress: string,
+  wallet?: any
+): Promise<CertificateNftTransferResult> {
+  if (!wallet || typeof window === 'undefined') {
+    throw new Error('Connect the institution wallet that currently holds this certificate NFT.');
+  }
+
+  const trimmedAddress = recipientAddress.trim();
+  if (!trimmedAddress.startsWith('addr')) {
+    throw new Error('Enter a valid Cardano recipient address.');
+  }
+
+  const { ForgeScript, Transaction, resolveScriptHash } = await import('@meshsdk/core');
+  const usedAddresses: string[] = await wallet.getUsedAddresses();
+  const issuerAddress = usedAddresses?.[0];
+
+  if (!issuerAddress) {
+    throw new Error('No institution wallet address found. Reconnect the wallet and try again.');
+  }
+
+  const assetName = buildCertificateNftAssetName(certificate.uniqueIdentifier);
+  const assetNameHex = stringToHex(assetName);
+  const issuerCopyAssetName = buildCertificateIssuerCopyAssetName(certificate.uniqueIdentifier);
+  const issuerCopyAssetNameHex = stringToHex(issuerCopyAssetName);
+  const utxos = await wallet.getUtxos();
+  const asset = utxos
+    .flatMap(getUtxoAssets)
+    .find(
+      (candidate: { unit: string; quantity: string }) =>
+        candidate.unit !== 'lovelace' &&
+        candidate.unit.endsWith(assetNameHex) &&
+        BigInt(candidate.quantity || '0') > 0n
+    );
+  const issuerCopyAsset = utxos
+    .flatMap(getUtxoAssets)
+    .find(
+      (candidate: { unit: string; quantity: string }) =>
+        candidate.unit !== 'lovelace' &&
+        candidate.unit.endsWith(issuerCopyAssetNameHex) &&
+        BigInt(candidate.quantity || '0') > 0n
+    );
+
+  if (!asset) {
+    throw new Error(
+      `The connected wallet does not hold the NFT for ${certificate.uniqueIdentifier}. Connect the wallet that minted or received it.`
+    );
+  }
+
+  let tx = new Transaction({ initiator: wallet }).sendAssets(trimmedAddress, [
+    { unit: asset.unit, quantity: '1' },
+  ]);
+  let issuerCopyUnit = issuerCopyAsset?.unit;
+
+  if (!issuerCopyAsset) {
+    const certificateData: CertificateData = {
+      recipientName: certificate.recipientName,
+      recipientEmail: certificate.recipientEmail,
+      recipientPosition: certificate.recipientPosition,
+      credentialType: certificate.credentialType,
+      issueDate: certificate.issueDate,
+      expiryDate: certificate.expiryDate,
+      institutionId: certificate.institutionId,
+      institutionName: certificate.institutionName,
+    };
+    const imageUrl = await uploadNftImageToIpfs(
+      certificateData,
+      certificate.uniqueIdentifier,
+      certificate.certificateHash,
+      certificate.certificateNumber,
+      certificate.blockchainTxHash
+    );
+    const nftImageData = buildCertificateNftImageData({
+      certificateData,
+      uniqueIdentifier: certificate.uniqueIdentifier,
+      certificateHash: certificate.certificateHash,
+      certificateNumber: certificate.certificateNumber,
+      blockchainTxHash: certificate.blockchainTxHash,
+    });
+    const forgeScript = ForgeScript.withOneSignature(issuerAddress);
+    const policyId = resolveScriptHash(forgeScript);
+    issuerCopyUnit = `${policyId}${issuerCopyAssetNameHex}`;
+    tx = tx.mintAsset(forgeScript, {
+      assetName: issuerCopyAssetName,
+      assetQuantity: '1',
+      recipient: issuerAddress,
+      metadata: buildCertificateIssuerCopyMintMetadata(nftImageData, imageUrl),
+      label: '721',
+    });
+  }
+
+  tx = tx.setMetadata(LITECERT_METADATA_LABEL, {
+      app: 'LiteCert',
+      action: 'transfer',
+      id: certificate.uniqueIdentifier,
+      issuerCopy: issuerCopyAsset ? 'already_exists' : 'minted',
+    });
+
+  const unsignedTx = await tx.build();
+  const signedTx = await wallet.signTx(unsignedTx);
+  const txHash = await wallet.submitTx(signedTx);
+
+  return {
+    txHash,
+    assetName,
+    assetUnit: asset.unit,
+    recipientAddress: trimmedAddress,
+    issuerCopy: {
+      assetName: issuerCopyAssetName,
+      assetUnit: issuerCopyUnit,
+      minted: !issuerCopyAsset,
+    },
+  };
 }
 
 // Get Cardano network from env
@@ -122,7 +411,8 @@ export async function getWalletBalance(wallet: any): Promise<string | null> {
 export async function submitCertificateToBlockchain(
   certificateData: CertificateData,
   uniqueIdentifier: string,
-  wallet?: any
+  wallet?: any,
+  options: SubmitCertificateOptions = {}
 ): Promise<BlockchainResult> {
   if (!wallet || typeof window === 'undefined') {
     throw new Error('A connected wallet is required to submit certificates to the blockchain.');
@@ -143,36 +433,28 @@ export async function submitCertificateToBlockchain(
       wallet,
       certificateHash,
       uniqueIdentifier,
-      certificateData.institutionName
+      certificateData
     );
 
     return { txHash, txIndex, uniqueIdentifier, certificateHash, timestamp: Date.now() };
   }
 
-  // --- Path 2: Metadata-only fallback (until contract is built & deployed) ---
+  // --- Path 2: NFT minting fallback (until contract is built & deployed) ---
   console.warn(
-    '[LiteCert] Contract not deployed — using metadata-only TX. ' +
+    '[LiteCert] Contract not deployed — minting a certificate NFT with 674/721 metadata. ' +
     'Build the Aiken contract and set NEXT_PUBLIC_CONTRACT_COMPILED_CODE to enable ' +
     'trustless on-chain verification and revocation.'
   );
 
-  const { Transaction } = await import('@meshsdk/core');
-
-  const tx = new Transaction({ initiator: wallet }).setMetadata(674, {
-    msg: [
-      'LiteCert Certificate',
-      `ID: ${uniqueIdentifier}`,
-      `Hash: ${certificateHash}`,
-      `Issuer: ${certificateData.institutionName}`,
-      `Timestamp: ${new Date().toISOString()}`,
-    ],
-  });
-
-  const unsignedTx = await tx.build();
-  const signedTx = await wallet.signTx(unsignedTx);
-  const txHash = await wallet.submitTx(signedTx);
-
-  return { txHash, txIndex: 0, uniqueIdentifier, certificateHash, timestamp: Date.now() };
+  return mintCertificateNft(
+    {
+      certificateData,
+      uniqueIdentifier,
+      certificateHash,
+      certificateNumber: options.certificateNumber,
+    },
+    wallet
+  );
 }
 
 /**
@@ -205,10 +487,13 @@ export async function verifyCertificateOnChain(
     if (!response.ok) return false;
 
     const metadataList: any[] = await response.json();
-    const entry = metadataList.find((m: any) => m.label === '674');
-    if (!entry?.json_metadata?.msg) return false;
+    const entry = metadataList.find((m: any) => String(m.label) === String(LITECERT_METADATA_LABEL));
+    const metadata = entry?.json_metadata;
+    if (!metadata) return false;
 
-    const msgs: string[] = entry.json_metadata.msg;
+    if (metadata.certificateId === uniqueIdentifier || metadata.id === uniqueIdentifier) return true;
+
+    const msgs = Array.isArray(metadata.msg) ? metadata.msg : [];
     return msgs.some((line: string) => line.includes(uniqueIdentifier));
   } catch (error) {
     console.error('Error verifying on blockchain:', error);

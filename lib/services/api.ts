@@ -31,6 +31,39 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+export interface IssuanceDraftPayload {
+  recipientName: string;
+  recipientEmail: string;
+  recipientPosition: string;
+  credentialType: string;
+  issueDate: string;
+  expiryDate?: string;
+}
+
+export interface IssuanceJob {
+  id: string;
+  institutionId: string;
+  institutionName: string;
+  uniqueIdentifier: string;
+  certificateNumber: string;
+  certificateHash: string;
+  status: 'pending' | 'submitted' | 'persisted' | 'failed';
+  blockchainTxHash?: string;
+  blockchainTxIndex?: number;
+  errorMessage?: string;
+  certificateId?: string;
+  createdAt: string;
+  updatedAt: string;
+  draft: IssuanceDraftPayload;
+}
+
+export interface FinalizeIssuancePayload {
+  txHash: string;
+  txIndex: number;
+  certificateHash: string;
+  uniqueIdentifier: string;
+}
+
 // Save certificate to backend
 export async function saveCertificate(
   certificate: Omit<CertificateRecord, 'id' | 'status' | 'createdAt' | 'updatedAt'>
@@ -51,6 +84,53 @@ export async function saveCertificate(
     return {
       success: false,
       error: 'Failed to save certificate',
+    };
+  }
+}
+
+export async function createIssuanceJob(
+  draft: IssuanceDraftPayload
+): Promise<ApiResponse<IssuanceJob>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/issuance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(draft),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error creating issuance job:', error);
+    return {
+      success: false,
+      error: 'Failed to create issuance job',
+    };
+  }
+}
+
+export async function finalizeIssuanceJob(
+  jobId: string,
+  payload: FinalizeIssuancePayload
+): Promise<ApiResponse<{ job: IssuanceJob; certificate: CertificateRecord | null; reconciled?: boolean }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/issuance/${encodeURIComponent(jobId)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error finalizing issuance job:', error);
+    return {
+      success: false,
+      error: 'Failed to finalize issuance job',
     };
   }
 }

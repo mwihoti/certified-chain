@@ -3,6 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 import "@meshsdk/react/styles.css";
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: "Lite-Cert",
   description: "lite-cert",

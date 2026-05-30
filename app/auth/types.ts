@@ -1,8 +1,9 @@
 export interface AuthUser {
     id: string;
     email: string;
-    role?: 'admin' | 'institution' | 'user';
-    organization_id?: string;
+    role?: 'super_admin' | 'institution_admin' | 'verifier' | 'holder';
+    institution_id?: string;
+    institution_name?: string;
     created_at?: string;
 }
 
@@ -15,8 +16,9 @@ export interface SignUpCredentials {
     email: string;
     password: string;
     metadata?: {
-        organization_name?: string;
-        role?: string;
+        institution_id?: string;
+        institution_name?: string;
+        role?: 'super_admin' | 'institution_admin' | 'verifier' | 'holder';
     };
 }
 

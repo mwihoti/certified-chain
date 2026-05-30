@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Layout from '@/components/layout/Layout';
 import { signUp } from '../actions';
-import { set } from 'react-hook-form';
 
 
 export default function AuthRegisterPage() {
@@ -39,8 +38,8 @@ export default function AuthRegisterPage() {
         email: formData.email,
         password: formData.password,
         metadata: {
-            organization_name: formData.organizationName,
-            role: 'institution',
+            institution_name: formData.organizationName,
+            role: 'institution_admin',
         },
     }) ;
     if (result.error) {

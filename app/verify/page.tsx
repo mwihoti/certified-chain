@@ -14,6 +14,7 @@ import { verifyCertificateOnChain } from '@/lib/services/cardano';
 import { verifyOnChain, ContractVerificationResult } from '@/lib/services/contract';
 import { isContractDeployed } from '@/lib/contracts/registry';
 import { verifyZKProof, isMidnightConfigured, ZKProof } from '@/lib/services/midnight';
+import CertificateTemplate from '@/components/certificate/CertificateTemplate';
 
 export default function VerifyPortal() {
   const [certNumber, setCertNumber] = useState('');
@@ -136,6 +137,20 @@ export default function VerifyPortal() {
 
           {result.certificate && (
             <div className="space-y-4">
+              <CertificateTemplate
+                recipientName={result.certificate.recipientName}
+                recipientEmail={result.certificate.recipientEmail}
+                recipientPosition={result.certificate.recipientPosition}
+                credentialType={result.certificate.credentialType}
+                issueDate={result.certificate.issueDate}
+                expiryDate={result.certificate.expiryDate}
+                institutionName={result.certificate.institutionName}
+                transactionHash={result.certificate.blockchainTxHash}
+                uniqueIdentifier={result.certificate.uniqueIdentifier}
+                certificateNumber={result.certificate.certificateNumber}
+                status={result.certificate.status}
+              />
+
               <div className="border rounded-lg p-4 bg-muted/30 text-sm space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Recipient:</span>

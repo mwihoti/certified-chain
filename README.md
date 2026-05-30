@@ -1,204 +1,109 @@
-# LiteCert - Blockchain Certificate Verification System
+# Certified Chain
 
-A blockchain-based certificate verification platform built on Cardano. LiteCert enables institutions to issue tamper-proof digital credentials with unique identifiers that can be instantly verified by employers and other parties.
+Certified Chain is a Next.js application for issuing, storing, and verifying blockchain-backed certificates. Institutions issue credentials through a wallet-connected workflow, certificate records are persisted in Neon Postgres, and verification reads both application state and Cardano anchoring data.
 
-## Key Features
+## Production Trust Model
 
-### 🔗 Blockchain Integration
-- **Cardano Blockchain**: Certificates are anchored on the Cardano blockchain for immutability
-- **Unique Identifiers**: Each certificate gets a unique ID in format `ORG3_USER_ENTRY` (e.g., `CAR_JOH_01`)
-- **Transaction Hashes**: Every certificate has a verifiable blockchain transaction
-- **Privacy-First**: Certificate data is hashed before blockchain submission
+- Certificate records live in Neon Postgres.
+- Public verification queries certificate status by certificate number or unique identifier.
+- Cardano anchoring stores a certificate hash and identifier reference, not the raw certificate payload.
+- Institutions can revoke certificates in the application database and, when the Aiken contract is configured, on-chain as well.
+- Issuance now uses a durable `issuance_jobs` table so retries reconcile against a reserved server-side job instead of creating duplicate certificate rows.
+- Midnight zero-knowledge proof support is present in the repo but should be treated as experimental until fully deployed and operated.
 
-### 🏛️ Institution Portal
-- Register and manage institutional accounts
-- Issue individual certificates with blockchain anchoring
-- **Batch upload certificates via Excel**
-  - Download pre-formatted Excel template
-  - Upload filled Excel with recipient details
-  - System processes and submits to blockchain
-  - Download updated Excel with unique IDs and transaction hashes
-- View and manage all issued certificates
-- Revoke certificates when needed
+## Stack
 
-### 👤 User Portal
-- **Retrieve certificates using certificate number or unique identifier**
-- View blockchain verification data (unique ID and transaction hash)
-- Download certificate as PDF
-- Generate shareable verification links
+- Next.js 16 App Router
+- TypeScript
+- Tailwind CSS and shadcn/ui
+- Neon Postgres for application tables, users, and sessions
+- Cardano via Mesh SDK and Blockfrost
+- Optional Aiken contract for trustless registry/revocation
+- Optional Midnight integration for privacy-preserving proofs
 
-### ✅ Verification Portal
-- **Verify certificates by certificate number or unique identifier**
-- View complete blockchain verification details
-- Check certificate status (Valid/Revoked/Expired)
-- Access blockchain transaction details
+## Main Product Flows
 
-## Tech Stack
+### Institution issuance
 
-- **Framework**: Next.js 16 with React 18 and TypeScript
-- **Blockchain**: Cardano via @meshsdk/core (MeshSDK)
-- **Excel Processing**: xlsx library
-- **Cryptography**: crypto-js for hashing
-- **Styling**: Tailwind CSS
-- **UI Components**: shadcn/ui (Radix UI)
-- **State Management**: React Query (TanStack Query)
-- **Icons**: Lucide React
+1. Institution admin signs in.
+2. The app creates a server-side issuance job in `/api/issuance`.
+3. The client submits the Cardano transaction from the connected wallet.
+4. The transaction result is reconciled through `/api/issuance/[jobId]`.
+5. The certificate row is persisted exactly once and linked back to the issuance job.
 
-For details on using @meshsdk/core, see [MESHSDK_INTEGRATION.md](./MESHSDK_INTEGRATION.md).
+### Verification
 
-## Getting Started
+1. Verifier looks up a certificate by `certificateNumber` or `uniqueIdentifier`.
+2. The app loads the certificate record from Neon Postgres.
+3. The UI checks Cardano metadata and, if configured, the contract UTxO state.
+4. Status is rendered as `valid`, `revoked`, or `expired`.
 
-### Prerequisites
+### Revocation
 
-- Node.js 18+ or Bun
-- npm, yarn, or bun package manager
+1. Institution admin opens the dashboard.
+2. The app optionally submits an on-chain revocation if the contract path is active.
+3. The certificate row is updated to `revoked`.
 
-### Installation
+## Environment
 
-1. Clone the repository:
+Use [.env.example](/home/mwihotidan/work/startups/certified-chain/.env.example) as the source of required variables.
+
+Important:
+
+- `NEXT_PUBLIC_*` values are browser-visible.
+- Keep Pinata secrets server-side only.
+- Use a dedicated Blockfrost project per environment.
+- Do not point development builds at production Supabase, Neon, or Cardano infrastructure.
+
+## Database and RLS
+
+Neon SQL migrations now live under [neon/migrations](/home/mwihotidan/work/startups/certified-chain/neon/migrations).
+
+The older Supabase migration remains in [supabase/migrations](/home/mwihotidan/work/startups/certified-chain/supabase/migrations/20260526_production_hardening.sql) for reference, but it uses Supabase-specific RLS helpers and should not be applied directly to Neon.
+
+The Neon schema introduces:
+
+- `organizations`
+- `app_users`
+- `app_auth_sessions`
+- `certificates`
+- `issuance_jobs`
+- `audit_logs`
+- App-enforced institution scoping in the Next.js API routes
+
+Before deploying, make sure institution users in `app_users` include:
+
+- `role`
+- `institution_id` for institution admins
+
+## Local Development
+
 ```bash
-git clone <repository-url>
-cd litecert
-```
-
-2. Install dependencies:
-```bash
-npm install
-# or
-yarn install
-# or
 bun install
+bun run dev
 ```
 
-3. Start the development server:
+Run tests with:
+
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-bun dev
+bun run test
 ```
 
-4. Open your browser and navigate to:
-```
-http://localhost:3000
-```
-5. Test supabase connection locally
-```
-bun run scripts/test-supabase.ts
-```
+## Route Ownership
 
+- `/institution/*` is the supported institution-facing flow.
+- Legacy `/admin/*` prototype issuance pages were removed from the product surface.
 
+## Docs
 
-## Project Structure
+- [docs/production-trust-model.md](/home/mwihotidan/work/startups/certified-chain/docs/production-trust-model.md)
+- [docs/operations-runbook.md](/home/mwihotidan/work/startups/certified-chain/docs/operations-runbook.md)
 
-```
-app/
-├── institution/         # Institution portal pages
-│   ├── batch/          # Batch upload page
-│   ├── dashboard/      # Dashboard page
-│   ├── issue/          # Issue certificate page
-│   ├── register/       # Registration page
-│   └── page.tsx        # Login page
-├── user/               # User portal pages
-├── verify/             # Verification portal pages
-├── layout.tsx          # Root layout with providers
-├── page.tsx            # Home page
-├── providers.tsx       # Client-side providers
-└── globals.css         # Global styles and design tokens
-components/
-├── layout/             # Header, Footer, Layout components
-└── ui/                 # Reusable UI components (shadcn/ui)
-hooks/                  # Custom React hooks
-lib/
-├── mockData.ts         # Mock data for prototype
-└── utils.ts            # Utility functions
-```
+## Launch Positioning
 
-## Demo Credentials
+This repo is now structured for a production path, but production readiness still depends on:
 
-### Institution Login
-- **Email**: demo@cardanostate.edu
-- **Password**: Any password works (prototype mode)
-
-### Sample Certificates to Verify
-
-| Certificate Number | Position | Institution |
-|-------------------|----------|-------------|
-| CSU-2024-00147 | Graduate | Cardano State University |
-| FKF-2024-01892 | Player | Football Kenya Federation |
-| KKF-2024-00789 | Athlete | Kenya Karate Federation |
-| MOR-2024-02567 | Graduate | Moringa School |
-| NMB-2024-01567 | Surgeon | National Medical Board (Revoked) |
-
-## Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
-
-## Blockchain Integration
-
-See [BLOCKCHAIN_INTEGRATION.md](./BLOCKCHAIN_INTEGRATION.md) for detailed documentation on:
-- Unique identifier format (ORG3_USER_ENTRY)
-- Certificate data hashing
-- Blockchain transaction metadata
-- Excel template format
-- Wallet integration (with MeshJS)
-- Environment variables for production
-
-### Quick Overview
-
-**Unique Identifier Format**: `ORG3_USER_ENTRY`
-- Example: `CAR_JOH_01` (Cardano University, John, Entry 01)
-
-**Certificate Issuance Flow**:
-1. Institution fills Excel template with recipient details
-2. System generates unique identifiers for each certificate
-3. Certificate data is hashed for privacy
-4. Transactions are submitted to Cardano blockchain
-5. Updated Excel with unique IDs and transaction hashes is returned
-
-**Certificate Retrieval**:
-- Users can retrieve certificates using unique identifier
-- Blockchain verification data is displayed (transaction hash, unique ID)
-
-## Integration Points
-
-This system integrates with:
-- **Cardano Blockchain** - For certificate anchoring and verification (via MeshJS)
-- **Eternl Wallet** - Wallet connection for blockchain transactions
-- **Excel Processing** - For batch certificate uploads
-- **Backend API** - For institution authentication and data persistence (future)
-- **IPFS/Arweave** - For decentralized certificate storage (future)
-
-## How can I edit this code?
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting. Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-Clone this repo and push changes. The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain?
-
-Yes! Navigate to Project > Settings > Domains and click Connect Domain. Read more: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
-
-## License
-
-MIT License
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- applying the Neon migration
+- configuring JWT claims consistently
+- deploying monitoring and alerting in your hosting environment
+- validating the full issuance flow against live infrastructure

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Send, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,20 +12,20 @@ import { Progress } from '@/components/ui/progress';
 import Layout from '@/components/layout/Layout';
 import { useToast } from '@/hooks/use-toast';
 import {
-  generateUniqueIdentifier,
   submitCertificateToBlockchain,
-  getNextEntryNumber,
   CertificateData,
 } from '@/lib/services/cardano';
-import { saveCertificate } from '@/lib/services/api';
-import { useWallet } from '@meshsdk/react';
-import { CardanoWallet } from '@meshsdk/react';
-import { createClient } from '@/lib/supabase/client';
+import { createIssuanceJob, finalizeIssuanceJob } from '@/lib/services/api';
+import { getCurrentSessionUser } from '@/lib/services/session';
+import CardanoWalletPanel, { type WalletConnectionState } from '@/components/wallet/CardanoWalletPanel';
 
 export default function IssueCertificate() {
   const router = useRouter();
   const { toast } = useToast();
-  const { connected, wallet } = useWallet();
+  const [{ connected, wallet }, setWalletConnection] = useState<WalletConnectionState>({
+    connected: false,
+    wallet: null,
+  });
   const [step, setStep] = useState<'form' | 'processing' | 'complete'>('form');
   const [progress, setProgress] = useState(0);
   const [txHash, setTxHash] = useState('');
@@ -35,12 +35,10 @@ export default function IssueCertificate() {
 
   useEffect(() => {
     async function loadInstitution() {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user?.user_metadata) {
-        const meta = session.user.user_metadata;
-        setInstitutionName(meta.institution_name || '');
-        setInstitutionId(meta.institution_id || session.user.id);
+      const user = await getCurrentSessionUser();
+      if (user) {
+        setInstitutionName(user.institution_name || '');
+        setInstitutionId(user.institution_id || user.id);
       }
     }
     loadInstitution();
@@ -68,6 +66,10 @@ export default function IssueCertificate() {
     'Referee Certification',
   ];
 
+  const handleWalletChange = useCallback((connection: WalletConnectionState) => {
+    setWalletConnection(connection);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -93,10 +95,20 @@ export default function IssueCertificate() {
 
     try {
       setProgress(20);
+      const issuanceJob = await createIssuanceJob({
+        recipientName: formData.recipientName,
+        recipientEmail: formData.recipientEmail,
+        recipientPosition: formData.recipientPosition,
+        credentialType: formData.credentialType,
+        issueDate: formData.issueDate,
+        expiryDate: formData.expiryDate,
+      });
 
-      const entryNumber = await getNextEntryNumber(institutionId, formData.recipientName);
-      const identifier = generateUniqueIdentifier(institutionName, formData.recipientName, entryNumber);
-      setUniqueIdentifier(identifier.fullIdentifier);
+      if (!issuanceJob.success || !issuanceJob.data) {
+        throw new Error(issuanceJob.error || 'Failed to create issuance job.');
+      }
+
+      setUniqueIdentifier(issuanceJob.data.uniqueIdentifier);
 
       setProgress(45);
 
@@ -115,33 +127,21 @@ export default function IssueCertificate() {
 
       const result = await submitCertificateToBlockchain(
         certificateData,
-        identifier.fullIdentifier,
-        wallet
+        issuanceJob.data.uniqueIdentifier,
+        wallet,
+        { certificateNumber: issuanceJob.data.certificateNumber }
       );
 
       setProgress(90);
-
-      const year = new Date().getFullYear();
-      const certificateNumber = `${institutionName.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase()}-${year}-${String(entryNumber).padStart(5, '0')}`;
-
-      const saveResult = await saveCertificate({
-        uniqueIdentifier: identifier.fullIdentifier,
-        certificateNumber,
-        recipientName: formData.recipientName,
-        recipientEmail: formData.recipientEmail,
-        recipientPosition: formData.recipientPosition,
-        credentialType: formData.credentialType,
-        issueDate: formData.issueDate,
-        expiryDate: formData.expiryDate,
-        institutionId,
-        institutionName,
-        blockchainTxHash: result.txHash,
-        blockchainTxIndex: result.txIndex,
+      const finalizeResult = await finalizeIssuanceJob(issuanceJob.data.id, {
+        txHash: result.txHash,
+        txIndex: result.txIndex,
         certificateHash: result.certificateHash,
+        uniqueIdentifier: issuanceJob.data.uniqueIdentifier,
       });
 
-      if (!saveResult.success) {
-        console.warn('Failed to save certificate to database:', saveResult.error);
+      if (!finalizeResult.success) {
+        throw new Error(finalizeResult.error || 'Blockchain submission succeeded, but certificate persistence failed.');
       }
 
       setTxHash(result.txHash);
@@ -150,7 +150,7 @@ export default function IssueCertificate() {
 
       toast({
         title: 'Certificate Issued',
-        description: `${identifier.fullIdentifier} anchored on Cardano.`,
+        description: `${issuanceJob.data.uniqueIdentifier} minted to your wallet on Cardano.`,
       });
     } catch (error: any) {
       console.error('Error issuing certificate:', error);
@@ -200,7 +200,7 @@ export default function IssueCertificate() {
                     </>
                   )}
                 </div>
-                <CardanoWallet />
+                <CardanoWalletPanel onChange={handleWalletChange} />
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -302,7 +302,7 @@ export default function IssueCertificate() {
                   <p className="text-muted-foreground">
                     {progress < 30 && 'Generating unique identifier...'}
                     {progress >= 30 && progress < 60 && 'Hashing certificate data...'}
-                    {progress >= 60 && progress < 90 && 'Submitting to Cardano blockchain...'}
+                    {progress >= 60 && progress < 90 && 'Minting certificate NFT on Cardano...'}
                     {progress >= 90 && 'Saving to database...'}
                   </p>
                 </div>
@@ -335,6 +335,9 @@ export default function IssueCertificate() {
                     <p className="text-sm text-muted-foreground mb-1">Transaction Hash</p>
                     <p className="font-mono text-xs break-all">{txHash}</p>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    The minted asset should appear in the connected wallet after the transaction confirms.
+                  </p>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -354,6 +357,13 @@ export default function IssueCertificate() {
                     }}
                   >
                     Issue Another
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push(`/certificate/view?uniqueId=${encodeURIComponent(uniqueIdentifier)}`)}
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View Certificate
                   </Button>
                   <Button variant="outline" onClick={() => router.push('/institution/dashboard')}>
                     Back to Dashboard

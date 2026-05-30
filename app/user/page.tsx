@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { Search, Download, Share2, CheckCircle, Key } from 'lucide-react';
+import Link from 'next/link';
+import { Search, Download, Share2, CheckCircle, Key, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Layout from '@/components/layout/Layout';
 import { getCertificateByCertNumber, getCertificateByUniqueId, CertificateRecord } from '@/lib/services/api';
 import { useToast } from '@/hooks/use-toast';
+import CertificateTemplate from '@/components/certificate/CertificateTemplate';
 
 export default function UserPortal() {
   const { toast } = useToast();
@@ -63,20 +65,20 @@ export default function UserPortal() {
 
   const handleShare = () => {
     if (!certificate) return;
-    const url = `${window.location.origin}/verify`;
+    const url = `${window.location.origin}/certificate/view?uniqueId=${encodeURIComponent(certificate.uniqueIdentifier)}`;
     navigator.clipboard.writeText(url);
-    toast({ title: 'Link Copied', description: 'Share the verify page with your certificate number.' });
+    toast({ title: 'Link Copied', description: 'Share the public certificate view link.' });
   };
 
   return (
     <Layout>
-      <div className="container py-12 max-w-2xl">
-        <div className="text-center mb-8">
+      <div className="container py-12 max-w-5xl">
+        <div className="text-center mb-8 max-w-2xl mx-auto">
           <h1 className="text-3xl font-bold mb-2">Retrieve Your Certificate</h1>
           <p className="text-muted-foreground">Enter your certificate details or unique identifier to access your credential.</p>
         </div>
 
-        <Tabs defaultValue="certNumber" className="mb-6">
+        <Tabs defaultValue="certNumber" className="mb-6 max-w-2xl mx-auto">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="certNumber">By Certificate Number</TabsTrigger>
             <TabsTrigger value="uniqueId">By Unique ID</TabsTrigger>
@@ -156,27 +158,28 @@ export default function UserPortal() {
         )}
 
         {certificate && (
-          <Card>
+          <Card className="mt-8">
             <CardContent className="pt-6">
               <div className="flex items-center gap-2 mb-4">
                 <CheckCircle className="h-5 w-5 text-success" />
                 <Badge className="bg-success text-success-foreground">Verified on Blockchain</Badge>
               </div>
-              <div className="border rounded-lg p-6 bg-muted/30 mb-4">
-                <div className="text-center mb-4">
-                  <p className="text-sm text-muted-foreground">{certificate.institutionName}</p>
-                  <h3 className="text-xl font-bold mt-2">{certificate.credentialType}</h3>
-                  <p className="text-lg mt-2">{certificate.recipientName}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Issued: {new Date(certificate.issueDate).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="text-center text-xs text-muted-foreground font-mono">
-                  {certificate.certificateNumber}
-                </div>
-              </div>
 
-              <div className="border rounded-lg p-4 bg-primary/5 mb-4">
+              <CertificateTemplate
+                recipientName={certificate.recipientName}
+                recipientEmail={certificate.recipientEmail}
+                recipientPosition={certificate.recipientPosition}
+                credentialType={certificate.credentialType}
+                issueDate={certificate.issueDate}
+                expiryDate={certificate.expiryDate}
+                institutionName={certificate.institutionName}
+                transactionHash={certificate.blockchainTxHash}
+                uniqueIdentifier={certificate.uniqueIdentifier}
+                certificateNumber={certificate.certificateNumber}
+                status={certificate.status}
+              />
+
+              <div className="border rounded-lg p-4 bg-primary/5 my-4">
                 <h4 className="font-semibold text-sm mb-3">Blockchain Verification</h4>
                 <div className="mb-2">
                   <span className="text-xs text-muted-foreground">Unique Identifier:</span>
@@ -188,8 +191,14 @@ export default function UserPortal() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button asChild className="flex-1">
+                  <Link href={`/certificate/view?uniqueId=${encodeURIComponent(certificate.uniqueIdentifier)}`}>
+                    <ExternalLink className="mr-2 h-4 w-4" />Open Certificate
+                  </Link>
+                </Button>
                 <Button
+                  variant="outline"
                   className="flex-1"
                   onClick={() => toast({ title: 'PDF Generation', description: 'PDF download will be available soon.' })}
                 >

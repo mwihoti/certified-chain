@@ -1,44 +1,27 @@
 
-
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server'; 
+import { requireInstitutionContext } from '@/lib/server/auth';
 
-
-const BUCKET_NAME = 'organization-excels'; 
-const getFilePath = (orgId: string) => `uploads/${orgId}/certificates.xlsx`; // Adjust filename/path as needed
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
-  const { orgId } = params;
+  void request;
+  const context = await requireInstitutionContext();
+  const { orgId } = await params;
 
   if (!orgId) {
     return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
   }
 
- 
-  const supabase = await createClient();
+  if (context.role !== 'super_admin' && context.institutionId !== orgId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
-
-  const { data, error } = await supabase.storage
-    .from(BUCKET_NAME)
-    .download(getFilePath(orgId));
-
-
-
-  const arrayBuffer = await data.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  // Return the Excel file as a downloadable response
-  return new NextResponse(buffer, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${orgId}_original_certificates.xlsx"`,
-      'Content-Length': buffer.length.toString(),
-
-      'Cache-Control': 'private, max-age=0, must-revalidate',
-    },
-  });
+  return NextResponse.json(
+    { error: 'Original Excel downloads require a storage provider and are not backed by Neon Postgres.' },
+    { status: 501 }
+  );
 }

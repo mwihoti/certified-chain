@@ -3,11 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "bun@1.2.20",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --experimental-strip-types --test tests/**/*.test.ts",
+    "test:neon": "node --experimental-strip-types scripts/test-neon.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -15,6 +18,7 @@
     "@meshsdk/core-csl": "^1.9.0-beta.90",
     "@meshsdk/core-cst": "^1.9.0-beta.90",
     "@meshsdk/react": "1.9.0-beta.93",
+    "@neondatabase/serverless": "^1.1.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",

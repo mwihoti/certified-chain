@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, type ChangeEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -15,6 +15,9 @@ import {
   Eye,
   Ban,
   ExternalLink,
+  Image as ImageIcon,
+  Loader2,
+  Send,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,38 +37,73 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import Layout from '@/components/layout/Layout';
-import { getAllCertificates, revokeCertificate, CertificateRecord } from '@/lib/services/api';
+import {
+  getOrganization,
+  revokeCertificate,
+  updateOrganization,
+  CertificateRecord,
+} from '@/lib/services/api';
+import { getCurrentSessionUser } from '@/lib/services/session';
 import { revokeOnChain } from '@/lib/services/contract';
+import { transferCertificateNftToWallet } from '@/lib/services/cardano';
 import { isContractDeployed } from '@/lib/contracts/registry';
-import { createClient } from '@/lib/supabase/client';
-import { useWallet } from '@meshsdk/react';
-import { CardanoWallet } from '@meshsdk/react';
 import { useToast } from '@/hooks/use-toast';
+import CardanoWalletPanel, { type WalletConnectionState } from '@/components/wallet/CardanoWalletPanel';
 
 export default function InstitutionDashboard() {
   const router = useRouter();
   const { toast } = useToast();
-  const { connected, wallet } = useWallet();
+  const [{ connected, wallet }, setWalletConnection] = useState<WalletConnectionState>({
+    connected: false,
+    wallet: null,
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [institutionName, setInstitutionName] = useState('Institution Dashboard');
   const [institutionId, setInstitutionId] = useState<string | null>(null);
+  const [organizationLogoUrl, setOrganizationLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [transferCertificate, setTransferCertificate] = useState<CertificateRecord | null>(null);
+  const [transferAddress, setTransferAddress] = useState('');
+  const [transferring, setTransferring] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      const user = await getCurrentSessionUser();
 
       let instId: string | null = null;
 
-      if (session?.user) {
-        const meta = session.user.user_metadata;
-        if (meta?.institution_name) setInstitutionName(meta.institution_name);
-        if (meta?.institution_id) instId = meta.institution_id;
+      if (user) {
+        if (user.institution_name) {
+          setInstitutionName(user.institution_name);
+        }
+        instId = user.institution_id ?? (user.role === 'institution_admin' ? user.id : null);
         setInstitutionId(instId);
+      }
+
+      if (instId) {
+        const organization = await getOrganization(instId);
+        const logoUrl = organization.data?.organizationImageName?.trim();
+        if (
+          logoUrl?.startsWith('ipfs://') ||
+          logoUrl?.startsWith('https://') ||
+          logoUrl?.startsWith('http://') ||
+          logoUrl?.startsWith('data:image/')
+        ) {
+          setOrganizationLogoUrl(logoUrl);
+        }
       }
 
       const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
@@ -86,6 +124,64 @@ export default function InstitutionDashboard() {
 
     loadData();
   }, []);
+
+  const handleWalletChange = useCallback((connection: WalletConnectionState) => {
+    setWalletConnection(connection);
+  }, []);
+
+  const handleLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) return;
+    if (!institutionId) {
+      toast({
+        title: 'Institution not loaded',
+        description: 'Refresh the dashboard and try uploading the logo again.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLogoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const uploadResponse = await fetch('/api/uploadToPinata', {
+        method: 'POST',
+        body: formData,
+      });
+      const uploadData = await uploadResponse.json().catch(() => null);
+
+      if (!uploadResponse.ok || !uploadData?.imgHash) {
+        throw new Error(uploadData?.error || 'Failed to upload logo to IPFS.');
+      }
+
+      const logoUrl = `ipfs://${uploadData.imgHash}`;
+      const updateResult = await updateOrganization(institutionId, {
+        organizationImageName: logoUrl,
+      });
+
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || 'Logo uploaded, but organization update failed.');
+      }
+
+      setOrganizationLogoUrl(logoUrl);
+      toast({
+        title: 'Logo saved',
+        description: 'New certificate NFT images will use this organization logo.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Logo upload failed',
+        description: error instanceof Error ? error.message : 'Could not upload organization logo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   const filteredCertificates = certificates.filter(
     (cert) =>
@@ -147,6 +243,50 @@ export default function InstitutionDashboard() {
     }
   };
 
+  const openTransferDialog = (cert: CertificateRecord) => {
+    setTransferCertificate(cert);
+    setTransferAddress('');
+  };
+
+  const handleTransferNft = async () => {
+    if (!transferCertificate) return;
+
+    if (!connected || !wallet) {
+      toast({
+        title: 'Wallet Required',
+        description: 'Connect the institution wallet holding this certificate NFT.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      const result = await transferCertificateNftToWallet(
+        transferCertificate,
+        transferAddress,
+        wallet
+      );
+      toast({
+        title: 'NFT Transfer Submitted',
+        description: result.issuerCopy.minted
+          ? `${transferCertificate.uniqueIdentifier} sent; issuer copy minted to institution wallet.`
+          : `${transferCertificate.uniqueIdentifier} sent; issuer copy already exists in institution wallet.`,
+      });
+      setTransferCertificate(null);
+      setTransferAddress('');
+      window.open(`${networkScanBase}/${result.txHash}`, '_blank');
+    } catch (error) {
+      toast({
+        title: 'NFT Transfer Failed',
+        description: error instanceof Error ? error.message : 'Could not transfer this certificate NFT.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTransferring(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'valid':
@@ -174,7 +314,23 @@ export default function InstitutionDashboard() {
             <p className="text-muted-foreground">Certificate Management Dashboard</p>
           </div>
           <div className="flex gap-3 flex-wrap items-center">
-            <CardanoWallet />
+            <CardanoWalletPanel onChange={handleWalletChange} />
+            <Input
+              id="organization-logo-upload"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleLogoUpload}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => document.getElementById('organization-logo-upload')?.click()}
+              disabled={logoUploading || !institutionId}
+            >
+              <ImageIcon className="mr-2 h-4 w-4" />
+              {logoUploading ? 'Uploading...' : organizationLogoUrl ? 'Change Logo' : 'Add Logo'}
+            </Button>
             <Link href="/institution/issue">
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
@@ -325,6 +481,10 @@ export default function InstitutionDashboard() {
                                 <Eye className="mr-2 h-4 w-4" />
                                 View Details
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openTransferDialog(cert)}>
+                                <Send className="mr-2 h-4 w-4" />
+                                Transfer NFT
+                              </DropdownMenuItem>
                               {cert.status === 'valid' && (
                                 <DropdownMenuItem
                                   className="text-destructive"
@@ -351,6 +511,60 @@ export default function InstitutionDashboard() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog
+          open={Boolean(transferCertificate)}
+          onOpenChange={(open) => {
+            if (!open && !transferring) {
+              setTransferCertificate(null);
+              setTransferAddress('');
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Transfer Certificate NFT</DialogTitle>
+              <DialogDescription>
+                Send the official NFT to the recipient and keep an issuer copy in the institution wallet.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="recipient-wallet-address">Recipient wallet address</Label>
+              <Input
+                id="recipient-wallet-address"
+                value={transferAddress}
+                onChange={(event) => setTransferAddress(event.target.value)}
+                placeholder="addr_test..."
+                disabled={transferring}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setTransferCertificate(null);
+                  setTransferAddress('');
+                }}
+                disabled={transferring}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleTransferNft}
+                disabled={transferring || !transferAddress.trim()}
+              >
+                {transferring ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                {transferring ? 'Transferring' : 'Transfer NFT'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
