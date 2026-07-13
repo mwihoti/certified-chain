@@ -52,6 +52,30 @@ export async function ensureAuthSchema() {
         updated_at timestamptz not null default now()
       )
     `);
+
+    // Midnight columns for certificates and issuance_jobs
+    // (added by migration 20260707_midnight_privacy_layer.sql)
+    await queryRows(
+      "alter table if exists certificates add column if not exists midnight_tx_hash text"
+    );
+    await queryRows(
+      "alter table if exists certificates add column if not exists midnight_cert_id text"
+    );
+    await queryRows(
+      "alter table if exists certificates add column if not exists midnight_revoke_tx_hash text"
+    );
+    await queryRows(
+      "alter table if exists issuance_jobs add column if not exists midnight_cert_id text"
+    );
+    await queryRows(
+      "alter table if exists issuance_jobs add column if not exists midnight_cert_data_hash text"
+    );
+    await queryRows(
+      "alter table if exists issuance_jobs add column if not exists midnight_tx_hash text"
+    );
+    await queryRows(
+      "create index if not exists certificates_midnight_cert_id_idx on certificates (midnight_cert_id)"
+    );
   })();
 
   return authSchemaReady;
