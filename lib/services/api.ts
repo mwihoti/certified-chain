@@ -17,6 +17,9 @@ export interface CertificateRecord {
   blockchainTxHash: string;
   blockchainTxIndex: number;
   certificateHash: string;
+  midnightTxHash?: string;
+  midnightCertId?: string;
+  midnightRevokeTxHash?: string;
   status: 'valid' | 'revoked' | 'expired';
   revokedAt?: string;
   revokedReason?: string;
@@ -50,6 +53,9 @@ export interface IssuanceJob {
   status: 'pending' | 'submitted' | 'persisted' | 'failed';
   blockchainTxHash?: string;
   blockchainTxIndex?: number;
+  midnightCertId?: string;
+  midnightCertDataHash?: string;
+  midnightTxHash?: string;
   errorMessage?: string;
   certificateId?: string;
   createdAt: string;
@@ -62,6 +68,8 @@ export interface FinalizeIssuancePayload {
   txIndex: number;
   certificateHash: string;
   uniqueIdentifier: string;
+  midnightTxHash?: string;
+  midnightCertId?: string;
 }
 
 // Save certificate to backend

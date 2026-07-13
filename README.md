@@ -10,7 +10,7 @@ Certified Chain is a Next.js application for issuing, storing, and verifying blo
 - Certificate NFTs use Cardano 721 metadata with an IPFS-hosted SVG certificate image.
 - Institutions can revoke certificates in the application database and, when the Aiken contract is configured, on-chain as well.
 - Issuance now uses a durable `issuance_jobs` table so retries reconcile against a reserved server-side job instead of creating duplicate certificate rows.
-- Midnight zero-knowledge proof support is present in the repo but should be treated as experimental until fully deployed and operated.
+- Midnight Network provides a zero-knowledge proof privacy layer. Certificate holders can prove credential validity, type, or non-expiry without revealing personal data. Personal data is NOT stored on Cardano — only hashes and identifiers appear on-chain.
 
 ## Stack
 
@@ -21,7 +21,65 @@ Certified Chain is a Next.js application for issuing, storing, and verifying blo
 - Cardano via Mesh SDK and Blockfrost
 - Pinata/IPFS for NFT certificate image storage
 - Optional Aiken contract for trustless registry/revocation
-- Optional Midnight integration for privacy-preserving proofs
+- Midnight Network integration for privacy-preserving ZK proofs (Cardano metadata contains only hashes, not personal data)
+
+## Midnight Network (Privacy Layer)
+
+The application includes zero-knowledge proof support via the Midnight Network, allowing certificate holders to prove credential validity without revealing personal data.
+
+### Architecture
+
+- **Compact Contract**: `contracts/midnight-certs/src/certificate_proof.compact`
+- **TypeScript Bindings**: Generated in `contracts/midnight-certs/dist/contract/`
+- **Hash Helpers**: `lib/midnight/helpers.ts`
+- **SDK Bridge**: `lib/midnight/sdk.ts`
+- **Service Layer**: `lib/services/midnight.ts`
+
+### Circuits
+
+The Midnight contract provides five circuits:
+
+1. **issue_certificate** — Register a certificate on the Midnight ledger
+2. **prove_validity** — Prove a certificate is valid without revealing data
+3. **prove_credential_type** — Prove you hold a specific credential type
+4. **prove_not_expired** — Prove a certificate was issued before a date
+5. **revoke_certificate** — Revoke a certificate on the Midnight ledger
+
+### Compilation
+
+Install the Midnight Compact toolchain (compactc) separately:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://install.midnight.network/compact/install.sh | sh
+```
+
+Compile the contract:
+
+```bash
+cd contracts/midnight-certs
+compactc src/certificate_proof.compact dist/
+```
+
+### Deployment
+
+Deploy to Midnight testnet:
+
+```bash
+bun run scripts/deploy-midnight.ts
+```
+
+Set `NEXT_PUBLIC_MIDNIGHT_CONTRACT_ADDRESS` after deployment.
+
+### Privacy Guarantees
+
+- Cardano metadata contains **only hashes and identifiers** — no personal data
+- Certificate holders generate ZK proofs at `/proof`
+- Verifiers validate proofs at `/verify` without seeing personal information
+- Midnight errors never roll back Cardano operations
+
+### Known Limitations
+
+**Hash Alignment (TODO)**: The Compact contract uses `persistentHash` (Poseidon hash) while TypeScript helpers use SHA-256. Phase 13 will replace SHA-256 with Poseidon to ensure hash alignment. See `docs/production-trust-model.md` for details.
 
 ## Main Product Flows
 

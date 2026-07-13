@@ -8,6 +8,7 @@ import {
   revokeCertificateSchema,
 } from '@/lib/validation/certificates';
 import { isUniqueViolation, queryOne, queryRows } from '@/lib/server/db';
+import { revokeCertificateOnMidnight, isMidnightServerConfigured } from '@/lib/server/midnight';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,9 @@ function toRecord(row: any) {
     blockchainTxHash: row.blockchain_tx_hash,
     blockchainTxIndex: row.blockchain_tx_index ?? 0,
     certificateHash: row.certificate_hash,
+    midnightTxHash: row.midnight_tx_hash,
+    midnightCertId: row.midnight_cert_id,
+    midnightRevokeTxHash: row.midnight_revoke_tx_hash,
     status: row.status,
     revokedAt: row.revoked_at,
     revokedReason: row.revoked_reason,
@@ -295,6 +299,28 @@ export async function DELETE(request: NextRequest) {
       uniqueIdentifier: uniqueId,
       revokeTxHash: parsed.revokeTxHash ?? null,
     });
+
+    // Revoke on Midnight (privacy layer). Errors must NOT roll back Cardano revocation.
+    if (isMidnightServerConfigured() && data.institution_id) {
+      try {
+        const result = await revokeCertificateOnMidnight(uniqueId, data.institution_id);
+        await queryOne<any>(
+          `update certificates set midnight_revoke_tx_hash = $1, updated_at = now() where unique_identifier = $2`,
+          [result.txHash, uniqueId]
+        );
+        data.midnight_revoke_tx_hash = result.txHash;
+
+        logEvent('info', 'certificate.midnight_revoked', {
+          uniqueIdentifier: uniqueId,
+          midnightRevokeTxHash: result.txHash,
+        });
+      } catch (midnightError) {
+        logEvent('warn', 'certificate.midnight_revoke_failed', {
+          uniqueIdentifier: uniqueId,
+          error: midnightError instanceof Error ? midnightError.message : String(midnightError),
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, message: 'Certificate revoked successfully', data: toRecord(data) });
   } catch (error) {

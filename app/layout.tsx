@@ -6,18 +6,17 @@ import "@meshsdk/react/styles.css";
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: "Lite-Cert",
-  description: "lite-cert",
-  authors: [{ name: "Lovable" }],
+  title: "LiteCert - Blockchain Certificate Verification",
+  description:
+    "Issue, manage, and verify tamper-proof certificates on the Cardano blockchain. Secure credentials you can trust.",
   openGraph: {
-    title: "Lite-Cert",
-    description: "Licert Team",
+    title: "LiteCert - Blockchain Certificate Verification",
+    description:
+      "Issue, manage, and verify tamper-proof certificates on the Cardano blockchain.",
     type: "website",
-
   },
   twitter: {
     card: "summary_large_image",
-    site: "x-twitter: lite-cert",
   },
 };
 

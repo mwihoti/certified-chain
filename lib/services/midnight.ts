@@ -25,13 +25,26 @@ const MIDNIGHT_PROOF_SERVER_URL =
 const MIDNIGHT_CONTRACT_ADDRESS =
   process.env.NEXT_PUBLIC_MIDNIGHT_CONTRACT_ADDRESS || '';
 
-// Private witness — never sent to chain, used only for local ZK proof generation
-export interface CertificateWitness {
-  recipientName: string;
-  credentialType: string;
-  issueDate: string;
-  institutionId: string;
+export type { CertificateWitness } from '@/lib/midnight/helpers';
+export { computeCertDataHash } from '@/lib/midnight/helpers';
+import { computeCertDataHash, encodeBytes, certIdToBytes32, deriveInstitutionKeyHash } from '@/lib/midnight/helpers';
+import type { CertificateWitness } from '@/lib/midnight/helpers';
+
+/** Lazily load the SDK to avoid importing native modules at module load time. */
+async function getSdk() {
+  return import('@/lib/midnight/sdk');
 }
+
+type MidnightConfig = {
+  network: string;
+  nodeUrl: string;
+  proofServerUrl: string;
+  contractAddress: string;
+  mnemonic?: string;
+  privateStatePassword?: string;
+  zkArtifactsPath?: string;
+};
+type CircuitId = 'issue_certificate' | 'prove_validity' | 'prove_credential_type' | 'prove_not_expired' | 'revoke_certificate';
 
 export interface ZKProof {
   proof: string;           // serialised ZK proof bytes (hex)
@@ -50,33 +63,25 @@ function isMidnightAvailable(): boolean {
   return MIDNIGHT_CONTRACT_ADDRESS.length > 0;
 }
 
-// Encode string to fixed-length hex bytes (Compact Bytes<N> format)
-function encodeBytes(value: string, length: number): string {
-  const encoded = Buffer.from(value, 'utf8');
-  const padded = Buffer.alloc(length, 0);
-  encoded.copy(padded, 0, 0, Math.min(encoded.length, length));
-  return padded.toString('hex');
+/**
+ * Convert a hex string to Uint8Array.
+ */
+function hexToUint8Array(hex: string): Uint8Array {
+  const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+  const bytes = new Uint8Array(cleanHex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+  }
+  return bytes;
 }
 
-// Compute the certificate data hash that gets stored on Midnight
-// Must match the persistent_hash<"LiteCert"> in the Compact contract
-export async function computeCertDataHash(witness: CertificateWitness): Promise<string> {
-  const data =
-    encodeBytes(witness.recipientName, 64) +
-    encodeBytes(witness.credentialType, 64) +
-    encodeBytes(witness.issueDate, 16) +
-    encodeBytes(witness.institutionId, 32);
-
-  // Use SubtleCrypto (browser) or Node crypto for SHA-256
-  if (typeof window !== 'undefined' && window.crypto?.subtle) {
-    const msgBuffer = Buffer.from(data, 'hex');
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgBuffer);
-    return Buffer.from(hashBuffer).toString('hex');
-  }
-
-  // Node.js fallback
-  const { createHash } = await import('crypto');
-  return createHash('sha256').update(Buffer.from(data, 'hex')).digest('hex');
+function getConfig(): MidnightConfig {
+  return {
+    network: MIDNIGHT_NETWORK,
+    nodeUrl: MIDNIGHT_NODE_URL,
+    proofServerUrl: MIDNIGHT_PROOF_SERVER_URL,
+    contractAddress: MIDNIGHT_CONTRACT_ADDRESS,
+  };
 }
 
 // Issue a certificate on Midnight (called alongside Cardano TX issuance)
@@ -94,34 +99,25 @@ export async function issueOnMidnight(
   }
 
   const certDataHash = await computeCertDataHash(witness);
+  const config = getConfig();
 
-  // Dynamic import — Midnight SDK is client-side only
-  const { MidnightProvider, ContractClient } = await import('@midnight-ntwrk/sdk').catch(() => {
-    throw new Error(
-      '@midnight-ntwrk/sdk is not installed. ' +
-      'Run: pnpm add @midnight-ntwrk/sdk'
-    );
-  });
+  // Convert hex strings to Uint8Array as expected by the compiled contract
+  const certIdBytes = hexToUint8Array(certIdToBytes32(certId));
+  const certDataHashBytes = hexToUint8Array(certDataHash);
+  const institutionKeyHashBytes = hexToUint8Array(institutionKeyHash);
+  const issuedAt = BigInt(Math.floor(Date.now() / 1000));
 
-  const provider = new MidnightProvider({
-    network: MIDNIGHT_NETWORK,
-    nodeUrl: MIDNIGHT_NODE_URL,
-    proofServerUrl: MIDNIGHT_PROOF_SERVER_URL,
-  });
+  const { callCircuit } = await getSdk();
+  const result = await callCircuit(
+    config,
+    'issue_certificate',
+    certIdBytes,
+    certDataHashBytes,
+    institutionKeyHashBytes,
+    issuedAt
+  );
 
-  const contract = new ContractClient({
-    provider,
-    address: MIDNIGHT_CONTRACT_ADDRESS,
-  });
-
-  const tx = await contract.call('issue_certificate', {
-    cert_id: certId,
-    cert_data_hash: certDataHash,
-    institution_key_hash: institutionKeyHash,
-  });
-
-  await tx.submit();
-  return { txHash: tx.hash };
+  return { txHash: result.hash };
 }
 
 // Generate a ZK proof that a certificate is valid (no personal data revealed)
@@ -133,31 +129,16 @@ export async function proveValidity(
     throw new Error('Midnight contract not deployed.');
   }
 
-  const { MidnightProvider, ContractClient } = await import('@midnight-ntwrk/sdk').catch(() => {
-    throw new Error('@midnight-ntwrk/sdk is not installed. Run: pnpm add @midnight-ntwrk/sdk');
-  });
+  const config = getConfig();
 
-  const provider = new MidnightProvider({
-    network: MIDNIGHT_NETWORK,
-    nodeUrl: MIDNIGHT_NODE_URL,
-    proofServerUrl: MIDNIGHT_PROOF_SERVER_URL,
-  });
+  // Convert to Uint8Array as expected by the compiled contract
+  const certIdBytes = hexToUint8Array(certIdToBytes32(certId));
 
-  const contract = new ContractClient({
-    provider,
-    address: MIDNIGHT_CONTRACT_ADDRESS,
-  });
-
-  // Proof generation runs locally — witness stays on device
-  const result = await contract.prove('prove_validity', {
-    cert_id: certId,
-    witness: {
-      recipient_name: encodeBytes(witness.recipientName, 64),
-      credential_type: encodeBytes(witness.credentialType, 64),
-      issue_date: encodeBytes(witness.issueDate, 16),
-      institution_id: encodeBytes(witness.institutionId, 32),
-    },
-  });
+  // Note: proveCircuit is a placeholder that throws until the full
+  // proof generation pipeline is implemented. The proof generation
+  // requires creating an unproven transaction and using the proof provider.
+  const { proveCircuit } = await getSdk();
+  const result = await proveCircuit(config, 'prove_validity', certIdBytes);
 
   return {
     proof: result.proof,
@@ -176,31 +157,14 @@ export async function proveCredentialType(
     throw new Error('Midnight contract not deployed.');
   }
 
-  const { MidnightProvider, ContractClient } = await import('@midnight-ntwrk/sdk').catch(() => {
-    throw new Error('@midnight-ntwrk/sdk is not installed. Run: pnpm add @midnight-ntwrk/sdk');
-  });
+  const config = getConfig();
 
-  const provider = new MidnightProvider({
-    network: MIDNIGHT_NETWORK,
-    nodeUrl: MIDNIGHT_NODE_URL,
-    proofServerUrl: MIDNIGHT_PROOF_SERVER_URL,
-  });
+  // Convert to Uint8Array as expected by the compiled contract
+  const certIdBytes = hexToUint8Array(certIdToBytes32(certId));
+  const credentialTypeBytes = hexToUint8Array(encodeBytes(requiredCredentialType, 64));
 
-  const contract = new ContractClient({
-    provider,
-    address: MIDNIGHT_CONTRACT_ADDRESS,
-  });
-
-  const result = await contract.prove('prove_credential_type', {
-    cert_id: certId,
-    required_credential_type: encodeBytes(requiredCredentialType, 64),
-    witness: {
-      recipient_name: encodeBytes(witness.recipientName, 64),
-      credential_type: encodeBytes(witness.credentialType, 64),
-      issue_date: encodeBytes(witness.issueDate, 16),
-      institution_id: encodeBytes(witness.institutionId, 32),
-    },
-  });
+  const { proveCircuit } = await getSdk();
+  const result = await proveCircuit(config, 'prove_credential_type', certIdBytes, credentialTypeBytes);
 
   return {
     proof: result.proof,
@@ -221,25 +185,13 @@ export async function verifyZKProof(zkProof: ZKProof): Promise<MidnightVerificat
   }
 
   try {
-    const { MidnightProvider, ContractClient } = await import('@midnight-ntwrk/sdk').catch(() => {
-      throw new Error('@midnight-ntwrk/sdk is not installed.');
-    });
+    const config = getConfig();
+    const circuitId = zkProof.circuit as CircuitId;
 
-    const provider = new MidnightProvider({
-      network: MIDNIGHT_NETWORK,
-      nodeUrl: MIDNIGHT_NODE_URL,
-      proofServerUrl: MIDNIGHT_PROOF_SERVER_URL,
-    });
-
-    const contract = new ContractClient({
-      provider,
-      address: MIDNIGHT_CONTRACT_ADDRESS,
-    });
-
-    const verified = await contract.verify(zkProof.circuit, {
-      proof: zkProof.proof,
-      publicInputs: zkProof.publicInputs,
-    });
+    // Note: verifyProof is a placeholder that throws until the full
+    // verification pipeline is implemented using compact-runtime verifier.
+    const { verifyProof } = await getSdk();
+    const verified = await verifyProof(config, circuitId, zkProof.proof, zkProof.publicInputs);
 
     return { verified, circuit: zkProof.circuit, publicInputs: zkProof.publicInputs };
   } catch (error: any) {
@@ -250,6 +202,54 @@ export async function verifyZKProof(zkProof: ZKProof): Promise<MidnightVerificat
       error: error?.message || 'Verification failed',
     };
   }
+}
+
+// Generate a ZK proof that a certificate was issued before a given timestamp
+// and has not been revoked — without revealing the actual issue date.
+export async function proveNotExpired(
+  certId: string,
+  expiryTimestamp: number,
+  witness: CertificateWitness
+): Promise<ZKProof> {
+  if (!isMidnightAvailable()) {
+    throw new Error('Midnight contract not deployed.');
+  }
+
+  const config = getConfig();
+
+  // Convert to Uint8Array as expected by the compiled contract
+  const certIdBytes = hexToUint8Array(certIdToBytes32(certId));
+  const expiryTimestampBig = BigInt(expiryTimestamp);
+
+  const { proveCircuit } = await getSdk();
+  const result = await proveCircuit(config, 'prove_not_expired', certIdBytes, expiryTimestampBig);
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    circuit: 'prove_not_expired',
+  };
+}
+
+// Revoke a certificate on Midnight (requires institution key)
+export async function revokeOnMidnight(
+  certId: string,
+  institutionKeyHash: string
+): Promise<{ txHash: string }> {
+  if (!isMidnightAvailable()) {
+    throw new Error('Midnight contract not deployed.');
+  }
+
+  const config = getConfig();
+
+  // Convert hex strings to Uint8Array as expected by the compiled contract
+  const certIdBytes = hexToUint8Array(certIdToBytes32(certId));
+  const institutionKeyHashBytes = hexToUint8Array(institutionKeyHash);
+
+  const { callCircuit } = await getSdk();
+  const result = await callCircuit(config, 'revoke_certificate', certIdBytes, institutionKeyHashBytes);
+
+  return { txHash: result.hash };
 }
 
 export function isMidnightConfigured(): boolean {

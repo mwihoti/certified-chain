@@ -14,5 +14,7 @@ export const issuanceFinalizeSchema = z.object({
   txIndex: z.number().int().nonnegative().default(0),
   certificateHash: z.string().trim().min(10).max(128),
   uniqueIdentifier: z.string().trim().min(3).max(64),
+  midnightTxHash: z.string().trim().max(128).optional(),
+  midnightCertId: z.string().trim().max(128).optional(),
   errorMessage: z.string().trim().max(1000).optional(),
 });

@@ -7,7 +7,7 @@
     "test": "compact-test"
   },
   "devDependencies": {
-    "@midnight-ntwrk/compact-cli": "latest"
+    "@midnight-ntwrk/testkit-js": "4.1.1"
   },
-  "readme": "Install Midnight toolchain first: https://docs.midnight.network/getting-started"
+  "readme": "Install Midnight Compact toolchain (compactc, compact-test) separately: https://docs.midnight.network/getting-started"
 }

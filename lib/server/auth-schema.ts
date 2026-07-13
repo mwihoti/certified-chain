@@ -33,6 +33,25 @@ export async function ensureAuthSchema() {
     await queryRows(
       'create index if not exists app_auth_sessions_user_expires_idx on app_auth_sessions (user_id, expires_at)'
     );
+    await queryRows(`
+      create table if not exists organizations (
+        id uuid primary key default gen_random_uuid(),
+        name text not null,
+        type text not null,
+        email text not null,
+        contact_name text not null,
+        phone text not null,
+        number_of_certs integer not null default 0,
+        organization_image_name text,
+        cert_template_name text,
+        recipients_excel_name text,
+        status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+        submitted_at timestamptz not null default now(),
+        completed_at timestamptz,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
   })();
 
   return authSchemaReady;

@@ -29,6 +29,7 @@ export default function IssueCertificate() {
   const [step, setStep] = useState<'form' | 'processing' | 'complete'>('form');
   const [progress, setProgress] = useState(0);
   const [txHash, setTxHash] = useState('');
+  const [midnightTxHash, setMidnightTxHash] = useState('');
   const [uniqueIdentifier, setUniqueIdentifier] = useState('');
   const [institutionName, setInstitutionName] = useState('');
   const [institutionId, setInstitutionId] = useState('');
@@ -145,6 +146,9 @@ export default function IssueCertificate() {
       }
 
       setTxHash(result.txHash);
+      if (finalizeResult.data?.job?.midnightTxHash) {
+        setMidnightTxHash(finalizeResult.data.job.midnightTxHash);
+      }
       setProgress(100);
       setStep('complete');
 
@@ -303,7 +307,7 @@ export default function IssueCertificate() {
                     {progress < 30 && 'Generating unique identifier...'}
                     {progress >= 30 && progress < 60 && 'Hashing certificate data...'}
                     {progress >= 60 && progress < 90 && 'Minting certificate NFT on Cardano...'}
-                    {progress >= 90 && 'Saving to database...'}
+                    {progress >= 90 && 'Saving to database and anchoring on Midnight...'}
                   </p>
                 </div>
                 <Progress value={progress} className="max-w-md mx-auto" />
@@ -335,6 +339,12 @@ export default function IssueCertificate() {
                     <p className="text-sm text-muted-foreground mb-1">Transaction Hash</p>
                     <p className="font-mono text-xs break-all">{txHash}</p>
                   </div>
+                  {midnightTxHash && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Midnight Privacy TX</p>
+                      <p className="font-mono text-xs break-all">{midnightTxHash}</p>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     The minted asset should appear in the connected wallet after the transaction confirms.
                   </p>
@@ -346,6 +356,7 @@ export default function IssueCertificate() {
                       setStep('form');
                       setProgress(0);
                       setUniqueIdentifier('');
+                      setMidnightTxHash('');
                       setFormData({
                         recipientName: '',
                         recipientEmail: '',

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Search, Download, Share2, CheckCircle, Key, ExternalLink } from 'lucide-react';
+import { Search, Download, Share2, CheckCircle, Key, ExternalLink, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Layout from '@/components/layout/Layout';
 import { getCertificateByCertNumber, getCertificateByUniqueId, CertificateRecord } from '@/lib/services/api';
+import { isMidnightConfigured } from '@/lib/services/midnight';
 import { useToast } from '@/hooks/use-toast';
 import CertificateTemplate from '@/components/certificate/CertificateTemplate';
 
@@ -207,6 +208,13 @@ export default function UserPortal() {
                 <Button variant="outline" className="flex-1" onClick={handleShare}>
                   <Share2 className="mr-2 h-4 w-4" />Share Link
                 </Button>
+                {isMidnightConfigured() && (
+                  <Button asChild variant="outline" className="flex-1">
+                    <Link href={`/proof?uniqueId=${encodeURIComponent(certificate.uniqueIdentifier)}`}>
+                      <Lock className="mr-2 h-4 w-4" />Privacy Proof
+                    </Link>
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

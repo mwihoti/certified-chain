@@ -22,6 +22,9 @@ function toJob(row: any) {
     status: row.status,
     blockchainTxHash: row.blockchain_tx_hash,
     blockchainTxIndex: row.blockchain_tx_index,
+    midnightCertId: row.midnight_cert_id,
+    midnightCertDataHash: row.midnight_cert_data_hash,
+    midnightTxHash: row.midnight_tx_hash,
     errorMessage: row.error_message,
     certificateId: row.certificate_id,
     createdAt: row.created_at,
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     const entryNumber = (certificateCountResult?.count ?? 0) + (jobCountResult?.count ?? 0) + 1;
-    const artifacts = buildDraftArtifacts(
+    const artifacts = await buildDraftArtifacts(
       normalizedDraft,
       context.institutionName || 'Institution',
       entryNumber
@@ -97,8 +100,10 @@ export async function POST(request: NextRequest) {
         unique_identifier,
         certificate_number,
         certificate_hash,
+        midnight_cert_id,
+        midnight_cert_data_hash,
         status
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending')
+      ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending')
       returning *`,
       [
         context.institutionId,
@@ -113,6 +118,8 @@ export async function POST(request: NextRequest) {
         artifacts.identifier.fullIdentifier,
         artifacts.certificateNumber,
         artifacts.certificateHash,
+        artifacts.midnightCertId,
+        artifacts.midnightCertDataHash,
       ]
     );
 

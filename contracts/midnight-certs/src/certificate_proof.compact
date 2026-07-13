@@ -1,4 +1,4 @@
-pragma language_version >= 0.14.0;
+pragma language_version 0.23;
 
 // ============================================================
 // LiteCert Certificate Proof Contract (Midnight Network)
@@ -15,15 +15,13 @@ pragma language_version >= 0.14.0;
 import CompactStandardLibrary;
 
 // Public on-chain state — only hashes, never raw personal data
-export ledger CertificateRegistry {
-  certificates: Map<Bytes<32>, CertRecord>;
-}
+export ledger certificates: Map<Bytes<32>, CertRecord>;
 
 // Permanent on-chain record per certificate
 struct CertRecord {
-  // Hashed institution public key (Blake2b-256 of the verifying key)
+  // Hashed institution public key
   institution_key_hash: Bytes<32>;
-  // SHA-256 of: name + credential_type + issue_date + institution_id
+  // Hash of: name + credential_type + issue_date + institution_id
   cert_data_hash: Bytes<32>;
   // Unix timestamp (seconds) when issued
   issued_at: Uint<64>;
@@ -32,12 +30,14 @@ struct CertRecord {
 }
 
 // Private witness — lives only on the holder's device, never sent to chain
-witness CertificateWitness {
+struct CertificateWitness {
   recipient_name: Bytes<64>;
   credential_type: Bytes<64>;
-  issue_date: Bytes<16>;
-  institution_id: Bytes<32>;
+  issue_date: Bytes<64>;
+  institution_id: Bytes<64>;
 }
+
+witness certificateWitness(): CertificateWitness;
 
 // ============================================================
 // CIRCUIT: issue_certificate
@@ -48,111 +48,111 @@ export circuit issue_certificate(
   cert_id: Bytes<32>,
   cert_data_hash: Bytes<32>,
   institution_key_hash: Bytes<32>,
+  issued_at: Uint<64>,
 ): [] {
-  CertificateRegistry.certificates.insert(
-    cert_id,
-    CertRecord {
+  certificates.insert(
+    disclose(cert_id),
+    disclose(CertRecord {
       institution_key_hash,
       cert_data_hash,
-      issued_at: current_time(),
+      issued_at,
       is_valid: true,
-    }
+    })
   );
 }
 
 // ============================================================
 // CIRCUIT: prove_validity
 // Proves a certificate is valid WITHOUT revealing any personal data.
-// The ZK proof guarantees: "I hold a valid credential that matches
-// the on-chain hash, issued by this institution."
 // ============================================================
 export circuit prove_validity(
   cert_id: Bytes<32>,
-  private witness w: CertificateWitness,
 ): Boolean {
-  const record = CertificateRegistry.certificates.lookup(cert_id);
+  const w = certificateWitness();
+  const record = certificates.lookup(disclose(cert_id));
 
-  // Recompute hash from private witness — matches only if data is correct
-  const computed_hash = persistent_hash<"LiteCert">(
-    pad(64, w.recipient_name),
-    pad(64, w.credential_type),
-    pad(16, w.issue_date),
-    pad(32, w.institution_id)
-  );
+  const computed_hash = persistentHash<Vector<4, Bytes<64>>>([
+    w.recipient_name,
+    w.credential_type,
+    w.issue_date,
+    w.institution_id,
+  ]);
 
-  return record.is_valid && (computed_hash == record.cert_data_hash);
+  return disclose(record.is_valid && (computed_hash == record.cert_data_hash));
 }
 
 // ============================================================
 // CIRCUIT: prove_credential_type
 // Selective disclosure: proves the holder has a SPECIFIC credential
-// (e.g. "CAF A Coaching License") without revealing their name.
-// Use case: employer checks "does this person have a valid coaching
-// license?" — gets a yes/no proof, not a name.
+// type without revealing their name.
 // ============================================================
 export circuit prove_credential_type(
   cert_id: Bytes<32>,
   required_credential_type: Bytes<64>,
-  private witness w: CertificateWitness,
 ): Boolean {
-  const record = CertificateRegistry.certificates.lookup(cert_id);
+  const w = certificateWitness();
+  const record = certificates.lookup(disclose(cert_id));
 
-  const computed_hash = persistent_hash<"LiteCert">(
-    pad(64, w.recipient_name),
-    pad(64, w.credential_type),
-    pad(16, w.issue_date),
-    pad(32, w.institution_id)
-  );
+  const computed_hash = persistentHash<Vector<4, Bytes<64>>>([
+    w.recipient_name,
+    w.credential_type,
+    w.issue_date,
+    w.institution_id,
+  ]);
 
-  return record.is_valid
+  return disclose(
+    record.is_valid
     && (computed_hash == record.cert_data_hash)
-    && (w.credential_type == required_credential_type);
+    && (w.credential_type == required_credential_type)
+  );
 }
 
 // ============================================================
 // CIRCUIT: prove_not_expired
 // Proves the certificate was issued before a given date AND
-// that it has not been revoked — without revealing the issue date.
+// has not been revoked — without revealing the issue date.
 // ============================================================
 export circuit prove_not_expired(
   cert_id: Bytes<32>,
   expiry_timestamp: Uint<64>,
-  private witness w: CertificateWitness,
 ): Boolean {
-  const record = CertificateRegistry.certificates.lookup(cert_id);
+  const w = certificateWitness();
+  const record = certificates.lookup(disclose(cert_id));
 
-  const computed_hash = persistent_hash<"LiteCert">(
-    pad(64, w.recipient_name),
-    pad(64, w.credential_type),
-    pad(16, w.issue_date),
-    pad(32, w.institution_id)
-  );
+  const computed_hash = persistentHash<Vector<4, Bytes<64>>>([
+    w.recipient_name,
+    w.credential_type,
+    w.issue_date,
+    w.institution_id,
+  ]);
 
-  return record.is_valid
+  return disclose(
+    record.is_valid
     && (computed_hash == record.cert_data_hash)
-    && (record.issued_at < expiry_timestamp);
+    && (record.issued_at < expiry_timestamp)
+  );
 }
 
 // ============================================================
 // CIRCUIT: revoke_certificate
 // Institution revokes a certificate on Midnight.
-// Requires proof of institution key to prevent unauthorized revocation.
 // ============================================================
 export circuit revoke_certificate(
   cert_id: Bytes<32>,
   institution_key_hash: Bytes<32>,
 ): [] {
-  const record = CertificateRegistry.certificates.lookup(cert_id);
+  const record = certificates.lookup(disclose(cert_id));
 
-  // Only the original issuing institution can revoke
-  assert record.institution_key_hash == institution_key_hash,
-    "Unauthorized: only the issuing institution can revoke";
+  assert(record.institution_key_hash == institution_key_hash,
+    "Unauthorized: only the issuing institution can revoke");
 
-  CertificateRegistry.certificates.insert(
-    cert_id,
-    CertRecord {
-      ..record,
+  certificates.insert(
+    disclose(cert_id),
+    disclose(CertRecord {
+      institution_key_hash: record.institution_key_hash,
+      cert_data_hash: record.cert_data_hash,
+      issued_at: record.issued_at,
       is_valid: false,
-    }
+    })
   );
 }

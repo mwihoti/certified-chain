@@ -209,15 +209,18 @@ export default function VerifyPortal() {
                 </div>
               </div>
 
-              {/* Midnight ZK notice */}
-              {!isMidnightConfigured() && (
-                <div className="border rounded-lg p-4 bg-muted/20 text-sm flex items-start gap-3">
-                  <Lock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+              {/* Midnight ZK proof section */}
+              {isMidnightConfigured() && result.certificate && (
+                <div className="border rounded-lg p-4 bg-primary/5 text-sm flex items-start gap-3">
+                  <Lock className="h-4 w-4 text-primary mt-0.5 shrink-0" />
                   <div>
-                    <p className="font-medium text-muted-foreground">Privacy Proofs (Midnight)</p>
+                    <p className="font-medium">Privacy Proofs (Midnight)</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      When the Midnight network integration is active, certificate holders can generate
-                      ZK proofs to verify credentials without revealing personal data.
+                      The holder can generate a ZK proof to verify this credential
+                      without revealing personal data.{' '}
+                      <a href={`/proof?uniqueId=${encodeURIComponent(result.certificate.uniqueIdentifier)}`} className="text-primary underline">
+                        Generate proof
+                      </a>
                     </p>
                   </div>
                 </div>
@@ -318,11 +321,21 @@ export default function VerifyPortal() {
               <CardContent className="space-y-4">
                 {!isMidnightConfigured() && (
                   <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground">
-                    <p className="font-medium mb-1">Midnight Network — Coming Soon</p>
+                    <p className="font-medium mb-1">Midnight Network Not Configured</p>
                     <p className="text-xs">
-                      ZK proof verification will be available once the Midnight testnet launches
-                      and the LiteCert contract is deployed. The contract is already written at
+                      ZK proof verification requires the Midnight contract to be deployed.
+                      The contract is written at
                       <code className="mx-1 bg-background px-1 rounded">contracts/midnight-certs/src/certificate_proof.compact</code>.
+                    </p>
+                  </div>
+                )}
+                {isMidnightConfigured() && (
+                  <div className="p-3 bg-primary/5 rounded-lg text-sm">
+                    <p className="font-medium mb-1">Midnight Network Active</p>
+                    <p className="text-xs text-muted-foreground">
+                      Certificate holders can generate ZK proofs at{' '}
+                      <a href="/proof" className="text-primary underline">the proof page</a>
+                      {' '}and paste them below for verification.
                     </p>
                   </div>
                 )}

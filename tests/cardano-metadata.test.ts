@@ -42,7 +42,7 @@ test('buildLiteCertMetadata keeps text metadata within Cardano limits', () => {
   }
 });
 
-test('buildLiteCertMetadata includes descriptive certificate fields', () => {
+test('buildLiteCertMetadata includes only privacy-safe certificate fields', () => {
   const metadata = buildLiteCertMetadata({
     certificateData,
     certificateHash: 'd47af8ba286cbf418e80c4bb2fa172c32b307a0650c136fcc43f1b1c92462667',
@@ -50,13 +50,18 @@ test('buildLiteCertMetadata includes descriptive certificate fields', () => {
     issuedAt: '2026-05-29T07:17:57.737Z',
   });
 
+  // Safe fields that are included
   assert.equal(metadata.certificateId, 'WAL_IK_02');
   assert.equal(metadata.institutionName, 'Wallet Lab');
-  assert.equal(metadata.recipientName, 'Ivy Karanja');
-  assert.equal(metadata.recipientEmail, 'ivy.karanja@example.com');
-  assert.equal(metadata.recipientPosition, 'Graduate');
-  assert.equal(metadata.credentialType, 'Bachelor of Science');
-  assert.equal(metadata.issueDate, '2026-05-29');
+  assert.equal(metadata.certificateHash, 'd47af8ba286cbf418e80c4bb2fa172c32b307a0650c136fcc43f1b1c92462667');
+
+  // Privacy: personal data must NOT be in on-chain metadata
+  assert.equal('recipientName' in metadata, false);
+  assert.equal('recipientEmail' in metadata, false);
+  assert.equal('recipientPosition' in metadata, false);
+  assert.equal('credentialType' in metadata, false);
+  assert.equal('issueDate' in metadata, false);
+  assert.equal('expiryDate' in metadata, false);
 });
 
 test('buildLiteCertMetadata rejects identifiers that cannot fit on chain', () => {

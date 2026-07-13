@@ -182,6 +182,7 @@ export async function registerUser({ email, password, metadata }: SignUpCredenti
       return { user: null, error: 'An account with this email already exists' };
     }
 
+    console.error('[registerUser]', error instanceof Error ? error.message : error);
     const message = error instanceof Error ? error.message : 'Failed to create account';
     return { user: null, error: message };
   }

@@ -164,7 +164,7 @@ return (
                                     <button 
                                     type='submit'
                                     disabled={isLoading}
-                                    className='w-full py-3 px-4 py-3 rounded-lg border border-[hsl(var(--border))] bg-white text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))] focus outline-none focus:ring-2 focus:ring-[hsl(var(---primary))] focus:border-transparent transition-all'>
+                                    className='w-full py-3 px-4 rounded-lg bg-[hsl(var(--primary))] text-white font-medium hover:bg-[hsl(var(--primary))]/90 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:border-transparent transition-all disabled:opacity-50'>
 
                                     {isLoading ? 'creating account...' : 'Create Account'}
                                 </button>
@@ -173,7 +173,7 @@ return (
                     </form>
                     <div className='relative my-6'>
                         <div className='absolute inset-0 flex items-center'>
-                            <div className='w-full border-t border-hsl(var(--border))]' />
+                            <div className='w-full border-t border-[hsl(var(--border))]' />
                         </div>
                         <div className='relative flex justify-center text-sm'>
                             <span className='px-2 bg-white text-[hsl(var(--muted-foreground))]'>Already have an account?</span>

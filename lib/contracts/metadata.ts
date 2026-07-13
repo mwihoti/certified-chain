@@ -46,23 +46,16 @@ export function buildLiteCertMetadata({
   uniqueIdentifier,
   issuedAt = new Date().toISOString(),
 }: LiteCertMetadataInput) {
+  // Privacy-first: only certificate identifier, hash, and institution name
+  // go on-chain. Recipient details are proven privately via Midnight ZK proofs.
   const metadata: Record<string, string | string[] | number> = {
     app: 'LiteCert',
-    schemaVersion: 1,
+    schemaVersion: 2,
     certificateId: requireMetadataText(uniqueIdentifier, 'Certificate identifier'),
     certificateHash: requireMetadataText(certificateHash, 'Certificate hash'),
     institutionName: chunkMetadataText(certificateData.institutionName),
-    recipientName: chunkMetadataText(certificateData.recipientName),
-    recipientEmail: chunkMetadataText(certificateData.recipientEmail),
-    recipientPosition: chunkMetadataText(certificateData.recipientPosition),
-    credentialType: chunkMetadataText(certificateData.credentialType),
-    issueDate: requireMetadataText(certificateData.issueDate, 'Issue date'),
     issuedAt,
   };
-
-  if (certificateData.expiryDate) {
-    metadata.expiryDate = requireMetadataText(certificateData.expiryDate, 'Expiry date');
-  }
 
   return metadata;
 }

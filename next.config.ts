@@ -3,6 +3,18 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: [
+    'level',
+    'leveldown',
+    'classic-level',
+    'abstract-level',
+    'encoding-down',
+    'levelup',
+    'deferred-leveldown',
+    'catering',
+    'isomorphic-ws',
+    'ws',
+  ],
   transpilePackages: [
     "lucide-react",
     "@meshsdk/react",
@@ -16,6 +28,37 @@ const nextConfig: NextConfig = {
     "@cardano-sdk/crypto",
     "@cardano-sdk/input-selection",
     "libsodium-wrappers-sumo",
+    "@midnight-ntwrk/compact-js",
+    "@midnight-ntwrk/compact-runtime",
+    "@midnight-ntwrk/dapp-connector-api",
+    "@midnight-ntwrk/ledger-v8",
+    "@midnight-ntwrk/midnight-js-contracts",
+    "@midnight-ntwrk/midnight-js-fetch-zk-config-provider",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider",
+    "@midnight-ntwrk/midnight-js-network-id",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider",
+    "@midnight-ntwrk/midnight-js-protocol",
+    "@midnight-ntwrk/midnight-js-types",
+    "@midnight-ntwrk/midnight-js-utils",
+    "@midnight-ntwrk/onchain-runtime-v3",
+    "@midnight-ntwrk/platform-js",
+    "@midnight-ntwrk/wallet-sdk",
+    "@midnight-ntwrk/wallet-sdk-abstractions",
+    "@midnight-ntwrk/wallet-sdk-address-format",
+    "@midnight-ntwrk/wallet-sdk-capabilities",
+    "@midnight-ntwrk/wallet-sdk-dust-wallet",
+    "@midnight-ntwrk/wallet-sdk-facade",
+    "@midnight-ntwrk/wallet-sdk-hd",
+    "@midnight-ntwrk/wallet-sdk-indexer-client",
+    "@midnight-ntwrk/wallet-sdk-node-client",
+    "@midnight-ntwrk/wallet-sdk-prover-client",
+    "@midnight-ntwrk/wallet-sdk-runtime",
+    "@midnight-ntwrk/wallet-sdk-shielded",
+    "@midnight-ntwrk/wallet-sdk-unshielded-wallet",
+    "@midnight-ntwrk/wallet-sdk-utilities",
+    "@midnight-ntwrk/zkir-v2",
   ],
   env: {
     NEXT_PUBLIC_CARDANO_NETWORK: process.env.NEXT_PUBLIC_CARDANO_NETWORK,
@@ -60,6 +103,7 @@ const nextConfig: NextConfig = {
       net: false,
       tls: false,
       stream: false,
+      ws: isServer ? false : require.resolve('ws'),
     };
 
     config.resolve.alias = {
@@ -77,23 +121,15 @@ const nextConfig: NextConfig = {
         process.cwd(),
         "node_modules/libsodium-wrappers-sumo"
       ),
+      // Fix isomorphic-ws WebSocket import for Midnight SDK
+      // Use custom shim that exports WebSocket as named export
+      "isomorphic-ws": path.resolve(process.cwd(), 'lib/midnight/isomorphic-ws-shim.mjs'),
     };
 
     config.ignoreWarnings = [
       { module: /node_modules\/@meshsdk/ },
       { module: /node_modules\/@cardano-sdk/ },
-    ];
-
-    // Midnight SDK is not yet published — mark as external so webpack skips bundling.
-    // The dynamic import in midnight.ts catches the missing module at runtime.
-    config.externals = [
-      ...(Array.isArray(config.externals) ? config.externals : config.externals ? [config.externals] : []),
-      ({ request }: { request?: string }, callback: (err?: Error | null, result?: string) => void) => {
-        if (request && request.startsWith('@midnight-ntwrk/')) {
-          return callback(null, `commonjs ${request}`);
-        }
-        callback();
-      },
+      { module: /node_modules\/@midnight-ntwrk/ },
     ];
 
     return config;

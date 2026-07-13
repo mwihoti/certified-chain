@@ -140,13 +140,19 @@ When `NEXT_PUBLIC_CONTRACT_COMPILED_CODE` is set, `submitCertificateToBlockchain
 ```bash
 # Install Midnight toolchain: https://docs.midnight.network/getting-started
 cd contracts/midnight-certs
-npm install
-npm run build                          # compiles certificate_proof.compact
+bun install
+bun run build                           # compiles certificate_proof.compact
+cd ../..
+bun run deploy:midnight                 # deploys contract, prints address
+bun run test:midnight                   # runs compact-test suite
 ```
-- Contract: `src/certificate_proof.compact` — ZK circuits for selective disclosure
-- `lib/services/midnight.ts` — `proveValidity`, `proveCredentialType`, `verifyZKProof`
-- Requires `NEXT_PUBLIC_MIDNIGHT_CONTRACT_ADDRESS` to be active
-- Currently targets devnet; wait for Midnight public testnet before wiring to production
+- Contract: `src/certificate_proof.compact` — 5 ZK circuits: issue, prove_validity, prove_credential_type, prove_not_expired, revoke
+- `lib/midnight/helpers.ts` — hash alignment helpers (encodeBytes, computeCertDataHash, certIdToBytes32, deriveInstitutionKeyHash)
+- `lib/services/midnight.ts` — client-side proof generation: proveValidity, proveCredentialType, proveNotExpired, verifyZKProof
+- `lib/server/midnight.ts` — server-side issuance/revocation: issueCertificateOnMidnight, revokeCertificateOnMidnight
+- `app/proof/page.tsx` — holder-facing ZK proof generation UI
+- Requires `NEXT_PUBLIC_MIDNIGHT_CONTRACT_ADDRESS` and `MIDNIGHT_DEPLOYER_MNEMONIC` to be active
+- Cardano metadata (label 674 + CIP-721) contains only hashes and identifiers — no personal data
 
 ### New Supabase columns needed (add to existing tables)
 ```sql

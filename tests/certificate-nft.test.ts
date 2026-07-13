@@ -55,6 +55,12 @@ test('buildCertificateNftMetadata returns Cardano 721-style metadata with image 
   const asset = metadata['721'].policy123.WAL_IK_02;
   assert.equal(asset.image, 'https://example.com/api/certificates/WAL_IK_02/nft-image');
   assert.equal(asset.mediaType, 'image/svg+xml');
-  assert.equal(asset.recipientName, 'Ivy Karanja');
-  assert.equal(asset.credentialType, 'Bachelor of Science');
+  // Privacy: personal data must NOT be in on-chain metadata
+  assert.equal('recipientName' in asset, false);
+  assert.equal('credentialType' in asset, false);
+  assert.equal('recipientEmail' in asset, false);
+  // Only safe fields should be present
+  assert.equal(asset.certificateId, 'WAL_IK_02');
+  assert.equal(asset.certificateHash, 'a47af8ba286cbf418e80c4bb2fa172c32b307a0650c136fcc43f1b1c92462667');
+  assert.equal(asset.status, 'valid');
 });
