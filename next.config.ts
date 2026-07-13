@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import path from "path";
+import fs from "fs";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -99,10 +100,10 @@ const nextConfig: NextConfig = {
       ...config.resolve.fallback,
       fs: false,
       path: false,
-      crypto: false,
+      crypto: require.resolve('crypto-browserify'),
       net: false,
       tls: false,
-      stream: false,
+      stream: require.resolve('stream-browserify'),
       ws: isServer ? false : require.resolve('ws'),
     };
 
@@ -125,6 +126,31 @@ const nextConfig: NextConfig = {
       // Use custom shim that exports WebSocket as named export
       "isomorphic-ws": path.resolve(process.cwd(), 'lib/midnight/isomorphic-ws-shim.mjs'),
     };
+
+    // Handle node: scheme imports for client-side bundles (e.g. @peculiar/webcrypto)
+    if (!isServer) {
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          const mod = resource.request.replace(/^node:/, '');
+          // Only rewrite if we have a fallback for it, otherwise let it fail naturally
+          if (config.resolve.fallback?.[mod] !== false) {
+            resource.request = mod;
+          }
+        })
+      );
+    }
+
+    // If Midnight contract dist hasn't been compiled, alias to stub
+    const midnightContractIndex = path.resolve(
+      process.cwd(),
+      'contracts/midnight-certs/dist/contract/index.js'
+    );
+    if (!fs.existsSync(midnightContractIndex)) {
+      config.resolve.alias['@/contracts/midnight-certs/dist/contract/index.js'] = path.resolve(
+        process.cwd(),
+        'lib/midnight/contract-stub.ts'
+      );
+    }
 
     config.ignoreWarnings = [
       { module: /node_modules\/@meshsdk/ },
