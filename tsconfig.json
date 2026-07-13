@@ -24,6 +24,9 @@
     "strictNullChecks": false,
     "baseUrl": ".",
     "paths": {
+      "@/contracts/midnight-certs/dist/contract/index.js": [
+        "./lib/midnight/contract-stub.ts"
+      ],
       "@/*": [
         "./*"
       ]
