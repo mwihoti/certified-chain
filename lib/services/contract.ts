@@ -14,8 +14,8 @@ import type { CertificateData } from '@/lib/domain/certificates';
 
 // Inlined to avoid circular dependency with cardano.ts
 function getNetwork(): 'preview' | 'preprod' | 'mainnet' {
-  const n = process.env.NEXT_PUBLIC_CARDANO_NETWORK || 'preview';
-  if (n !== 'preview' && n !== 'preprod' && n !== 'mainnet') return 'preview';
+  const n = process.env.NEXT_PUBLIC_CARDANO_NETWORK || 'preprod';
+  if (n !== 'preview' && n !== 'preprod' && n !== 'mainnet') return 'preprod';
   return n as 'preview' | 'preprod' | 'mainnet';
 }
 

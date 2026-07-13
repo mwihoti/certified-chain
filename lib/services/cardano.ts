@@ -367,10 +367,10 @@ export async function transferCertificateNftToWallet(
 
 // Get Cardano network from env
 export function getCardanoNetwork(): 'preview' | 'preprod' | 'mainnet' {
-  const network = process.env.NEXT_PUBLIC_CARDANO_NETWORK || 'preview';
+  const network = process.env.NEXT_PUBLIC_CARDANO_NETWORK || 'preprod';
   if (network !== 'preview' && network !== 'preprod' && network !== 'mainnet') {
-    console.warn(`Invalid network "${network}", defaulting to preview`);
-    return 'preview';
+    console.warn(`Invalid network "${network}", defaulting to preprod`);
+    return 'preprod';
   }
   return network as 'preview' | 'preprod' | 'mainnet';
 }
