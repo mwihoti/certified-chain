@@ -55,7 +55,7 @@ import {
 } from '@/lib/services/api';
 import { getCurrentSessionUser } from '@/lib/services/session';
 import { revokeOnChain } from '@/lib/services/contract';
-import { transferCertificateNftToWallet } from '@/lib/services/cardano';
+import { getCardanoNetwork, transferCertificateNftToWallet } from '@/lib/services/cardano';
 import { isContractDeployed } from '@/lib/contracts/registry';
 import { useToast } from '@/hooks/use-toast';
 import CardanoWalletPanel, { type WalletConnectionState } from '@/components/wallet/CardanoWalletPanel';
@@ -300,10 +300,12 @@ export default function InstitutionDashboard() {
     }
   };
 
-  const networkScanBase =
-    process.env.NEXT_PUBLIC_CARDANO_NETWORK === 'mainnet'
-      ? 'https://cardanoscan.io/transaction'
-      : 'https://preview.cardanoscan.io/transaction';
+  const networkScanBase = (() => {
+    const net = getCardanoNetwork();
+    if (net === 'mainnet') return 'https://cardanoscan.io/transaction';
+    if (net === 'preprod') return 'https://preprod.cardanoscan.io/transaction';
+    return 'https://preview.cardanoscan.io/transaction';
+  })();
 
   return (
     <Layout>

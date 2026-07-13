@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import CardanoWalletPanel, {
   type WalletConnectionState,
 } from "@/components/wallet/CardanoWalletPanel";
-import { mintExistingCertificateNftToWallet } from "@/lib/services/cardano";
+import { getCardanoNetwork, mintExistingCertificateNftToWallet } from "@/lib/services/cardano";
 
 function CertificateContent() {
   const searchParams = useSearchParams();
@@ -135,7 +135,12 @@ function CertificateContent() {
             variant="outline"
             onClick={() =>
               window.open(
-                `https://preview.cardanoscan.io/transaction/${certificate.blockchainTxHash}`,
+                (() => {
+                  const net = getCardanoNetwork();
+                  if (net === 'mainnet') return `https://cardanoscan.io/transaction/${certificate.blockchainTxHash}`;
+                  if (net === 'preprod') return `https://preprod.cardanoscan.io/transaction/${certificate.blockchainTxHash}`;
+                  return `https://preview.cardanoscan.io/transaction/${certificate.blockchainTxHash}`;
+                })(),
                 "_blank",
               )
             }
